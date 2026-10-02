@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#05050f" />
+    <title>Laser Plants</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <div id="hud">
+      <div id="status" class="panel">
+        <div class="sun">☀ <span id="sun">0</span><small id="sun-rate"></small></div>
+        <div id="wave">Wave 1 / 5</div>
+      </div>
+
+      <div id="controls">
+        <button id="btn-pause" class="round" title="Pause (Space)">⏸</button>
+        <button id="btn-speed" class="round" title="Speed (F)">1×</button>
+        <button id="btn-compass" class="round" title="Face north"><span id="needle">⬆</span></button>
+        <button id="btn-mute" class="round" title="Sound">🔊</button>
+      </div>
+
+      <div id="side">
+        <canvas id="minimap"></canvas>
+        <div id="structures" class="panel"></div>
+      </div>
+
+      <div id="preview" class="panel"></div>
+      <div id="toast"></div>
+
+      <div id="bottom">
+        <div id="cards"></div>
+        <div id="abilities"></div>
+        <div id="sellbar" class="panel"></div>
+        <button id="btn-go">GO!</button>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <div class="card">
+        <h1 id="overlay-title">Laser Plants</h1>
+        <p id="overlay-text"></p>
+        <button id="overlay-btn">Play</button>
+      </div>
+    </div>
+
+    <div id="rotate">Turn your screen sideways ↻</div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
