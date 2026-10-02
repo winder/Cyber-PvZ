@@ -209,7 +209,7 @@ function react(events: SimEvent[]): void {
 /** Start over. A fresh page load is the simplest way to reset everything. */
 function restart(): void {
   try {
-    sessionStorage.setItem('laserPlants.skipTitle', '1');
+    sessionStorage.setItem('cyberPvZ.skipTitle', '1');
   } catch {
     // Fine: they'll just see the title screen again.
   }
@@ -280,8 +280,8 @@ window.addEventListener('resize', () => engine.resize());
 
 let skipTitle = false;
 try {
-  skipTitle = sessionStorage.getItem('laserPlants.skipTitle') === '1';
-  sessionStorage.removeItem('laserPlants.skipTitle');
+  skipTitle = sessionStorage.getItem('cyberPvZ.skipTitle') === '1';
+  sessionStorage.removeItem('cyberPvZ.skipTitle');
 } catch {
   // Storage can be blocked; just show the title screen.
 }
@@ -289,7 +289,7 @@ if (skipTitle) {
   ui.started = true;
   hud.hideOverlay();
 } else hud.showOverlay(
-  'Laser Plants',
+  'Cyber Plants vs Zombies',
   `Futuristic zombies are coming for the <b>Mega-Brain Greenhouse</b>!<br>
    Plant your defense, then press <b>GO</b>. Survive ${game.totalWaves} waves.<br>
    <small>Drag to move · pinch or scroll to zoom · twist or right-drag to turn</small>`,

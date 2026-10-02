@@ -1,4 +1,4 @@
-# Laser Plants — Product Requirements
+# Cyber Plants vs Zombies — Product Requirements
 
 A futuristic **Plants vs. Zombies × StarCraft** mashup for the browser. Futuristic
 plants defend a base from futuristic zombies on an open 3D map. The fun is in

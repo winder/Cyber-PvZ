@@ -220,7 +220,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 #overlay h1 {
   margin: 0 0 8px;
-  font-size: 54px;
+  font-size: clamp(30px, 6vw, 46px);
   color: var(--good);
   text-shadow: 0 0 18px rgba(60, 255, 110, 0.8), 0 0 4px #fff;
 }

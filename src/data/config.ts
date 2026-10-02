@@ -1,5 +1,5 @@
 // ============================================================================
-//  LASER PLANTS — GAME DATA
+//  CYBER PLANTS VS ZOMBIES — GAME DATA
 //
 //  Every number that controls balance lives here. Change a value, save, and
 //  the game reloads with it. Distances are in map units (one plant is about

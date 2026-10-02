@@ -1,4 +1,4 @@
-# Laser Plants 🌱⚡
+# Cyber Plants vs Zombies 🌱⚡
 
 Futuristic plants vs. futuristic zombies, on an open 3D map. Plan your defense,
 press **GO**, and protect the Mega-Brain Greenhouse for 5 waves.
