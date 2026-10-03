@@ -56,12 +56,7 @@ export class Renderer {
       this.barMats.push(m);
     }
 
-    for (const s of game.structures) {
-      const visual = createStructureVisual(scene, world.mats, s.type, `structure${s.index}`);
-      visual.root.position.set(s.x, 0, s.z);
-      if (s.type === 'spaceship') visual.root.rotation.y = Math.PI / 2;
-      this.structures.push({ visual, bar: this.makeBar(visual, 2.5), x: s.x, z: s.z });
-    }
+    this.buildStructures();
 
     this.ghostGood = new StandardMaterial('ghostGood', scene);
     this.ghostGood.emissiveColor = new Color3(0.3, 1, 0.5);
@@ -88,6 +83,18 @@ export class Renderer {
     this.aimRing.material = world.mats.neon('#ff3355', 1.2, 0.8);
     this.aimRing.isPickable = false;
     this.aimRing.setEnabled(false);
+  }
+
+  /** (Re)build every base, fresh. Used at the start and after a debug jump. */
+  private buildStructures(): void {
+    for (const t of this.structures) t.visual.root.dispose();
+    this.structures = [];
+    for (const s of this.game.structures) {
+      const visual = createStructureVisual(this.world.scene, this.world.mats, s.type, `structure${s.index}`);
+      visual.root.position.set(s.x, 0, s.z);
+      if (s.type === 'spaceship') visual.root.rotation.y = Math.PI / 2;
+      this.structures.push({ visual, bar: this.makeBar(visual, 2.5), x: s.x, z: s.z });
+    }
   }
 
   private makeBar(visual: Visual, width: number): Mesh {
@@ -226,6 +233,7 @@ export class Renderer {
         case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay); break;
         case 'strikeHit': this.strikeBlast(e.x, e.z, e.radius); break;
         case 'structureDestroyed': this.destroyStructure(e.index); break;
+        case 'jumped': this.buildStructures(); break;
         default: break;
       }
     }

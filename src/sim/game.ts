@@ -72,7 +72,8 @@ export type SimEvent =
   | { t: 'waveStart'; wave: number }
   | { t: 'waveCleared'; wave: number; bonus: number }
   | { t: 'won' }
-  | { t: 'lost' };
+  | { t: 'lost' }
+  | { t: 'jumped'; wave: number };
 
 export type PlaceResult = { ok: true; plant: Plant } | { ok: false; reason: string };
 export type AbilityResult = { ok: true } | { ok: false; reason: string };
@@ -642,6 +643,29 @@ export class Game {
         .map((s) => ({ x: s.x, z: s.z, radius: STRUCTURES[s.type].radius })),
     );
     this.fieldDirty = false;
+  }
+
+  /**
+   * Debug: go to the build phase of wave `n` (0-based) with every base
+   * repaired, plants healed, and no zombies about. Works even after a loss.
+   */
+  jumpToWave(n: number): void {
+    this.wave = Math.max(0, Math.min(this.totalWaves - 1, Math.floor(n)));
+    this.phase = 'build';
+    this.zombies.length = 0;
+    this.strikes.length = 0;
+    this.spawnQueue = [];
+    this.waveTime = 0;
+    this.hyperTimer = 0;
+    this.cooldowns.orbitalStrike = 0;
+    this.cooldowns.hyperSun = 0;
+    for (const p of this.plants) p.hp = PLANTS[p.type].hp;
+    for (const s of this.structures) {
+      s.hp = STRUCTURES[s.type].hp;
+      s.alive = true;
+    }
+    this.refreshField();
+    this.events.push({ t: 'jumped', wave: this.wave });
   }
 
   drainEvents(): SimEvent[] {

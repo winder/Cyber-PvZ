@@ -55,6 +55,13 @@
       </div>
     </div>
 
+    <!-- Above the title/win/lose screens so you can always jump. Only shown with ?debug. -->
+    <div id="debug" class="panel" hidden>
+      <div class="debug-title">🐞 DEBUG</div>
+      <div class="debug-row"><span>Jump to wave</span><div id="debug-waves"></div></div>
+      <button id="debug-sun" class="on">∞ Sun</button>
+    </div>
+
     <div id="rotate">Turn your screen sideways ↻</div>
 
     <script type="module" src="./src/main.ts"></script>

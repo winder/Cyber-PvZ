@@ -160,6 +160,28 @@ describe('Game', () => {
     expect(g.phase).toBe('lost');
   });
 
+  it('debug jump goes to any wave with everything repaired', () => {
+    const g = new Game();
+    const r = g.place('laserPea', 0, 0);
+    g.startWave();
+    g.spawn('cyborg', 'east');
+    const gh = g.structures.find((s) => s.type === 'greenhouse')!;
+    gh.hp = 1;
+    g.structures[1].alive = false;
+    if (r.ok) r.plant.hp = 5;
+    g.jumpToWave(4);
+    expect(g.phase).toBe('build');
+    expect(g.wave).toBe(4);
+    expect(g.zombies).toHaveLength(0);
+    expect(g.structures.every((s) => s.alive)).toBe(true);
+    expect(gh.hp).toBeGreaterThan(1);
+    if (r.ok) expect(r.plant.hp).toBe(PLANTS.laserPea.hp);
+    // And the wave plays out from there.
+    expect(g.startWave()).toBe(true);
+    for (let i = 0; i < TICK_RATE * 2; i++) g.step();
+    expect(g.zombies.length).toBeGreaterThan(0);
+  });
+
   it('has five waves', () => {
     expect(WAVES).toHaveLength(5);
   });

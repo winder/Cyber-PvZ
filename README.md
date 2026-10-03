@@ -27,6 +27,16 @@ Open the address Vite prints. To play on a tablet on the same Wi-Fi, open the
 | Start the wave | GO! | GO! or Enter |
 | Pause / speed | ⏸ / 1× buttons | Space / F |
 
+## Debug mode
+
+Add `?debug` to the address (e.g. `https://winder.github.io/Cyber-PvZ/?debug`,
+or `http://localhost:5173/?debug` locally). A 🐞 panel appears with:
+
+- **Jump to wave 1–5**: goes to that wave's build phase with every base
+  repaired, plants healed, and the field cleared. Works mid-battle and after
+  losing.
+- **∞ Sun**: keeps sun topped up at 99,999. Tap to turn it off.
+
 ## Change the game
 
 Everything you'd want to tweak is in **`src/data/config.ts`**: plant costs,

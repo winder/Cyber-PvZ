@@ -143,6 +143,28 @@ button:disabled { opacity: 0.4; cursor: default; }
 #bossbar .bar { height: 12px; margin-top: 4px; border-radius: 6px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
 #bossbar .fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff3355, #c27bff); transition: width 0.2s; }
 
+/* ---- debug panel (only with ?debug) ---- */
+#debug {
+  position: fixed;
+  z-index: 20;
+  left: max(var(--gap), env(safe-area-inset-left));
+  bottom: calc(130px + env(safe-area-inset-bottom));
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-color: rgba(255, 170, 51, 0.7);
+  box-shadow: 0 0 14px rgba(255, 170, 51, 0.3);
+  font-size: 13px;
+}
+#debug[hidden] { display: none; }
+.debug-title { font-weight: 800; color: #ffaa33; letter-spacing: 0.08em; }
+.debug-row { display: flex; align-items: center; gap: 8px; }
+#debug-waves { display: flex; gap: 4px; }
+#debug button { min-width: 40px; height: 40px; padding: 0 10px; font-size: 15px; font-weight: 700; }
+#debug button.on { border-color: #ffaa33; color: #ffaa33; box-shadow: 0 0 10px rgba(255, 170, 51, 0.5); }
+#debug button.current { background: rgba(255, 170, 51, 0.25); }
+
 /* ---- toast ---- */
 #toast {
   position: absolute;

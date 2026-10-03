@@ -32,6 +32,47 @@ const camera = makeCamera();
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, game, (x, z) => camera.lookAt(x, z));
 const hud = makeHud();
 
+// -----------------------------------------------------------------------------
+//  Debug mode: add ?debug to the address. Jump to any wave, unlimited sun.
+// -----------------------------------------------------------------------------
+
+const debug = { on: new URLSearchParams(location.search).has('debug'), unlimitedSun: true };
+
+if (debug.on) {
+  const panel = document.getElementById('debug')!;
+  panel.hidden = false;
+  const waves = document.getElementById('debug-waves')!;
+  for (let i = 0; i < game.totalWaves; i++) {
+    const b = document.createElement('button');
+    b.textContent = String(i + 1);
+    b.title = `Jump to wave ${i + 1}`;
+    b.addEventListener('click', () => {
+      ui.selectedCard = null;
+      ui.selectedPlant = null;
+      ui.aiming = null;
+      ui.paused = false;
+      ui.started = true;
+      renderer.setGhost(null);
+      renderer.setAim(false);
+      hud.hideOverlay();
+      game.jumpToWave(i);
+    });
+    waves.appendChild(b);
+  }
+  const sunBtn = document.getElementById('debug-sun')!;
+  sunBtn.addEventListener('click', () => {
+    debug.unlimitedSun = !debug.unlimitedSun;
+    sunBtn.classList.toggle('on', debug.unlimitedSun);
+  });
+}
+
+function updateDebug(): void {
+  if (!debug.on) return;
+  if (debug.unlimitedSun) game.sun = 99999;
+  const buttons = document.getElementById('debug-waves')!.children;
+  for (let i = 0; i < buttons.length; i++) buttons[i].classList.toggle('current', i === game.wave);
+}
+
 // Browsers only allow sound after the first touch or click.
 window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
 
@@ -208,6 +249,10 @@ function react(events: SimEvent[]): void {
         renderer.setAim(false);
         if (e.bonus) hud.toast(`Wave cleared! +${e.bonus}☀`, 2500);
         break;
+      case 'jumped':
+        audio.play('click');
+        hud.toast(`🐞 Jumped to wave ${e.wave + 1}${e.wave === game.totalWaves - 1 ? ' (final wave!)' : ''}`);
+        break;
       case 'won':
         audio.play('win');
         hud.showOverlay('You Win! 🌱⚡', 'The Mega-Brain Greenhouse is safe.<br>The zombies have been laser-ed.', 'Play again');
@@ -273,6 +318,7 @@ engine.runRenderLoop(() => {
     acc = 0;
   }
 
+  updateDebug();
   const events = game.drainEvents();
   renderer.handle(events);
   react(events);
