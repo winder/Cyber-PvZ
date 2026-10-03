@@ -71,7 +71,7 @@ export interface ZombieDef {
   /** Gets a boss health bar and announcements. */
   boss?: boolean;
   /**
-   * Giant: walks in a straight line over rocks and cliffs, stomping plants in
+   * Giant: walks in a straight line over rocks and ravines, stomping plants in
    * the way (hurting every plant within `stompRadius`).
    */
   giant?: { stompRadius: number };
@@ -296,7 +296,8 @@ export const MAP = {
     { x: 22, z: -16, r: 2.2 },
     { x: -12, z: -18, r: 1.5 },
   ] as Circle[],
-  cliffs: [
+  /** Sheer-sided trenches cut into the ground. Nothing can cross them (except giants). */
+  ravines: [
     { x: -2, z: 17, w: 14, d: 3 },
     { x: -2, z: -17, w: 14, d: 3 },
     { x: 14, z: 1, w: 3, d: 10 },

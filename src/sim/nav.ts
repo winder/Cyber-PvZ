@@ -85,7 +85,7 @@ export class NavGrid {
     this.forCellsInCircle(c.x, c.z, c.r, (cell) => { this.blocked[cell] = 1; });
   }
 
-  addCliff(rect: Rect): void {
+  addRavine(rect: Rect): void {
     const c0 = this.colOf(rect.x - rect.w / 2 + CELL / 2), c1 = this.colOf(rect.x + rect.w / 2 - CELL / 2);
     const r0 = this.rowOf(rect.z - rect.d / 2 + CELL / 2), r1 = this.rowOf(rect.z + rect.d / 2 - CELL / 2);
     for (let row = r0; row <= r1; row++) {

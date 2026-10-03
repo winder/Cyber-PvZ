@@ -11,7 +11,7 @@ describe('NavGrid flow field', () => {
   it('routes around a wall when there is a gap', () => {
     const nav = new NavGrid(20, 20);
     // Wall of rock at x=0 from z=-10 up to z=6, leaving a gap at the top.
-    nav.addCliff({ x: 0, z: -2, w: 1, d: 16 });
+    nav.addRavine({ x: 0, z: -2, w: 1, d: 16 });
     nav.computeField([{ x: -8, z: 0, radius: 1 }]);
     // Straight-line distance from (8,0) is 16; detour through the gap is longer.
     const d = nav.dist[nav.cellOf(8, 0)];
@@ -21,7 +21,7 @@ describe('NavGrid flow field', () => {
 
   it('prefers chewing through cheap plants over a huge detour', () => {
     const nav = new NavGrid(20, 20);
-    nav.addCliff({ x: 0, z: -3, w: 1, d: 14 });
+    nav.addRavine({ x: 0, z: -3, w: 1, d: 14 });
     // Plug the gap with a "plant" that costs a little.
     for (let z = 4.5; z < 10; z += 0.5) nav.setPlant(1, 0, z, 0.3, 0.5);
     nav.computeField([{ x: -8, z: 0, radius: 1 }]);

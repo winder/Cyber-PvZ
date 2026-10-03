@@ -18,7 +18,7 @@ Co-designed by Wesley.
 - Multiple levels, campaign, save/progress.
 - Final art or recorded sound.
 - Multiplayer.
-- High ground / terrain height, random maps, extra factions, tech tree.
+- High ground that changes gameplay, random maps, extra factions, tech tree.
 
 ## Core loop
 
@@ -51,8 +51,11 @@ Co-designed by Wesley.
 
 ## Map
 
-- One hand-made map, roughly 3–4 screens wide, flat ground.
-- Rocks and cliffs block building and movement.
+- One hand-made map, roughly 3–4 screens wide, on 3D rolling hills (the
+  hills are looks only; the rules are the same as flat ground). Bases sit on
+  level pads.
+- Rocks and ravines (sheer trenches cut straight down into the ground) block
+  building and movement.
 - Zombies enter from 2–3 map edges.
 - **Free placement**: plants can go anywhere that is on the map, not on an
   obstacle, not on a structure, and not overlapping another plant.
@@ -133,7 +136,7 @@ Cost sun, have a cooldown, require the Spaceship to be standing.
 - A little robot driver sits on its head, pulling two control levers.
 - A small nest of glossy, smooth 3D curls rings the driver, deliberately unlike
   the blocky style of everything else.
-- Walks in a straight line over rocks and cliffs. Stomps every plant near him
+- Walks in a straight line over rocks and ravines. Stomps every plant near him
   when one is in his way.
 - Wanders: each time the base he's attacking loses another 25% of its health,
   he heads for a different base (the one he visited longest ago). Config can

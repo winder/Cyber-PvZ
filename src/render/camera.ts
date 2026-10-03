@@ -1,5 +1,6 @@
 import { ArcRotateCamera, Matrix, Scene, Vector3 } from '@babylonjs/core';
 import { MAP } from '../data/config';
+import { rayToTerrain, surfaceHeight } from './terrain';
 
 const NORTH = -Math.PI / 2;
 const TILT = 0.9; // radians from straight down
@@ -90,15 +91,19 @@ export class RtsCamera {
     this.clampTarget();
   }
 
-  /** Where a canvas pixel lands on the ground (y = 0), if it does. */
+  /** Where a canvas pixel lands on the 3D ground, if it does. */
   groundPoint(px: number, py: number): { x: number; z: number } | null {
     const ray = this.scene.createPickingRay(px, py, Matrix.Identity(), this.camera);
-    if (ray.direction.y >= -1e-4) return null;
-    const t = -ray.origin.y / ray.direction.y;
-    return { x: ray.origin.x + ray.direction.x * t, z: ray.origin.z + ray.direction.z * t };
+    const o = ray.origin, d = ray.direction;
+    return rayToTerrain(o.x, o.y, o.z, d.x, d.y, d.z);
   }
 
   update(dt: number): void {
+    // Ride up and down over the hills (but not down into ravines).
+    const t = this.camera.target;
+    const groundY = Math.max(0, surfaceHeight(t.x, t.z));
+    t.y += (groundY - t.y) * Math.min(1, dt * 4);
+
     // Keyboard panning.
     let kx = 0, kz = 0;
     if (this.keys.has('a') || this.keys.has('arrowleft')) kx -= 1;
@@ -155,7 +160,6 @@ export class RtsCamera {
     const t = this.camera.target;
     t.x = Math.max(-MAP.width / 2, Math.min(MAP.width / 2, t.x));
     t.z = Math.max(-MAP.depth / 2, Math.min(MAP.depth / 2, t.z));
-    t.y = 0;
   }
 
   private local(e: PointerEvent | WheelEvent): { x: number; y: number } {

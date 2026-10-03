@@ -123,7 +123,7 @@ export class Game {
     this.rand = mulberry32(seed);
     this.nav = new NavGrid(MAP.width, MAP.depth);
     for (const r of MAP.rocks) this.nav.addRock(r);
-    for (const c of MAP.cliffs) this.nav.addCliff(c);
+    for (const c of MAP.ravines) this.nav.addRavine(c);
     this.structures = MAP.structures.map((s, index) => ({
       index, type: s.id, x: s.x, z: s.z, hp: STRUCTURES[s.id].hp, alive: true,
     }));

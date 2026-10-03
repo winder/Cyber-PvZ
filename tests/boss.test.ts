@@ -47,11 +47,11 @@ describe('ZomWes 8000', () => {
     expect(new Set(wanders.map((e) => (e as { to: number }).to)).size).toBe(3);
   });
 
-  it('walks straight over rocks and cliffs', () => {
+  it('walks straight over rocks and ravines', () => {
     const g = new Game();
     g.phase = 'battle';
     const boss = g.spawn('zomwes', 'east');
-    boss.z = 1; // the cliff at x=14 is right in the way
+    boss.z = 1; // the ravine at x=14 is right in the way
     for (let i = 0; i < TICK_RATE * 40; i++) g.step();
     expect(boss.x).toBeLessThan(10);
   });

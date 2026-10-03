@@ -51,9 +51,13 @@ export class Minimap {
       ctx.arc(X(r.x), Z(r.z), r.r * s, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = 'rgba(80, 150, 255, 0.55)';
-    for (const cl of MAP.cliffs) {
-      ctx.fillRect(X(cl.x - cl.w / 2), Z(cl.z + cl.d / 2), cl.w * s, cl.d * s);
+    // Ravines: dark trenches with a glowing rim.
+    ctx.fillStyle = '#000003';
+    ctx.strokeStyle = 'rgba(90, 240, 255, 0.9)';
+    ctx.lineWidth = dpr;
+    for (const r of MAP.ravines) {
+      ctx.fillRect(X(r.x - r.w / 2), Z(r.z + r.d / 2), r.w * s, r.d * s);
+      ctx.strokeRect(X(r.x - r.w / 2), Z(r.z + r.d / 2), r.w * s, r.d * s);
     }
 
     for (const st of this.game.structures) {
