@@ -17,7 +17,7 @@
 import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
-export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack';
+export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
@@ -64,6 +64,24 @@ export interface ZombieDef {
   model?: ModelId;
   /** Skin image painted onto the model, e.g. 'skins/cyborg.png'. */
   skin?: string;
+  /** How much bigger to draw the model (1 = normal). */
+  scale?: number;
+  /** Extra decoration on the model. */
+  hair?: 'curly';
+  /** Gets a boss health bar and announcements. */
+  boss?: boolean;
+  /**
+   * Giant: walks in a straight line over rocks and cliffs, stomping plants in
+   * the way (hurting every plant within `stompRadius`).
+   */
+  giant?: { stompRadius: number };
+  /**
+   * Wanders to a different base each time the base it's attacking loses this
+   * fraction of its health (0.25 = at 75%, 50%, 25%).
+   * Set `wanderOn: 'self'` to wander when the zombie itself loses that much instead.
+   */
+  wanderEvery?: number;
+  wanderOn?: 'base' | 'self';
 }
 
 export interface StructureDef {
@@ -174,6 +192,26 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     color: '#ff8a3d',
     model: 'jetpackHumanoid',
     skin: 'skins/jetpack.png',
+  },
+  // The final boss. Named after his creator.
+  zomwes: {
+    name: 'ZomWes 8000',
+    icon: '👹',
+    hp: 15000,
+    speed: 0.7,
+    dps: 120,
+    armor: 0,
+    flying: false,
+    radius: 3,
+    color: '#b14dff',
+    model: 'humanoid',
+    skin: 'skins/zomwes.png',
+    scale: 10,
+    hair: 'curly',
+    boss: true,
+    giant: { stompRadius: 4 },
+    wanderEvery: 0.25,
+    wanderOn: 'base',
   },
 };
 
@@ -312,6 +350,7 @@ export const WAVES: SpawnGroup[][] = [
     { zombie: 'riotBot', edge: 'south', count: 8, every: 2, delay: 4 },
     { zombie: 'jetpack', edge: 'north', count: 6, every: 1.5, delay: 10 },
     { zombie: 'jetpack', edge: 'south', count: 6, every: 1.5, delay: 14 },
+    { zombie: 'zomwes', edge: 'east', count: 1, every: 1, delay: 18 },
     { zombie: 'cyborg', edge: 'east', count: 14, every: 0.8, delay: 20 },
   ],
 ];
@@ -326,6 +365,6 @@ export const WAVES: SpawnGroup[][] = [
 export type SoundId =
   | 'laser' | 'cryo' | 'place' | 'sell' | 'chomp' | 'zombieDie' | 'plantDie'
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
-  | 'waveClear' | 'win' | 'lose' | 'click' | 'error';
+  | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};

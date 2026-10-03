@@ -5,6 +5,7 @@ import {
 import { ZOMBIES, type ZombieId } from '../data/config';
 import { MODELS } from '../models/models';
 import { animate, assemble, buildPartMesh, skinMaterial, type BlockCharacter } from '../render/blockModel';
+import { buildCurlyHair } from '../render/hair';
 import { clearCustomSkin, getCustomSkin, saveCustomSkin } from '../skins';
 import { faceAt, faceLabel, layoutFaces, mirrorPixel, type FaceInfo } from './faces';
 
@@ -289,12 +290,14 @@ const liveCtx = liveTex.getContext() as unknown as CanvasRenderingContext2D;
 const skinMat = skinMaterial('skinMat', liveTex, scene);
 
 let character: BlockCharacter | null = null;
+let extras: AbstractMesh[] = [];
 const pickable = new Set<AbstractMesh>();
 
 function buildCharacter(id: ZombieId): void {
   if (character) {
-    for (const m of character.meshes) m.dispose();
+    for (const m of [...character.meshes, ...extras]) m.dispose();
     character.root.dispose();
+    extras = [];
   }
   pickable.clear();
   const model = ZOMBIES[id].model!;
@@ -305,6 +308,13 @@ function buildCharacter(id: ZombieId): void {
     return { def, mesh };
   });
   character = assemble('character', scene, parts);
+  // Hair isn't painted (it's 3D curls), but show it so you can see the look.
+  // It's not pickable, so you can still paint the head underneath.
+  if (ZOMBIES[id].hair && character.joints.head) {
+    const hair = buildCurlyHair(scene, 'hair');
+    hair.parent = character.joints.head;
+    extras.push(hair);
+  }
 }
 
 /** Texture pixel under a point on the 3D canvas, if it's on the character. */

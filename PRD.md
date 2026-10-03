@@ -123,6 +123,20 @@ Cost sun, have a cooldown, require the Spaceship to be standing.
 - **Sound later**: recorded effects; setting a file path for a sound name
   replaces the synthesized one.
 
+## Final boss: ZomWes 8000
+
+- Appears in the final wave, announced with a roar and a boss health bar.
+- About 10× normal size (16 units tall): too big to see whole when zoomed in.
+- Glossy, curly, shoulder-length brown hair made of smooth 3D ringlets,
+  deliberately unlike the blocky style of everything else.
+- Walks in a straight line over rocks and cliffs. Stomps every plant near him
+  when one is in his way.
+- Wanders: each time the base he's attacking loses another 25% of its health,
+  he heads for a different base (the one he visited longest ago). Config can
+  switch this to trigger on his own health instead.
+- Tuned so ~20 laser peashooters spread across the bases beat him comfortably,
+  ~14 barely, and 8 lose (checked by tests).
+
 ## Character editor
 
 A second page at `/editor/` for painting character skins.

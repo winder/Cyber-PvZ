@@ -8,6 +8,7 @@ import { skinUrl } from '../skins';
 import {
   BlockTemplate, loadSkinTexture, skinMaterial, UNIT, type BlockCharacter,
 } from './blockModel';
+import { buildCurlyHair } from './hair';
 
 /**
  * A thing drawn in the world. `root` is moved/rotated by the renderer.
@@ -19,6 +20,8 @@ export interface Visual {
   height: number;
   /** Set for blocky skinned characters, so the renderer can animate them. */
   character?: BlockCharacter;
+  /** Extra per-frame animation (e.g. bouncing hair). */
+  update?(time: number, moving: boolean): void;
 }
 
 /** Shared neon materials, one per color+style. */
@@ -204,7 +207,7 @@ function zombieBody(scene: Scene, mats: Materials, root: TransformNode, name: st
   }
 }
 
-const zombieFactories: Record<ZombieId, Factory> = {
+const zombieFactories: Partial<Record<ZombieId, Factory>> = {
   cyborg(scene, mats, name) {
     const root = new TransformNode(name, scene);
     zombieBody(scene, mats, root, name, ZOMBIES.cyborg.color, 1);
@@ -313,10 +316,22 @@ export function createZombieVisual(scene: Scene, mats: Materials, type: ZombieId
   const def = ZOMBIES[type];
   if (def.art) return standee(scene, mats, def.art, 1.8, name);
   if (def.model) return skinnedZombie(scene, mats, type, name);
-  return zombieFactories[type](scene, mats, name);
+  return (zombieFactories[type] ?? zombieFactories.cyborg!)(scene, mats, name);
 }
 
 const templates = new WeakMap<Scene, Map<ZombieId, BlockTemplate>>();
+const hairTemplates = new WeakMap<Scene, Mesh>();
+
+function hairTemplate(scene: Scene): Mesh {
+  let hair = hairTemplates.get(scene);
+  if (!hair) {
+    hair = buildCurlyHair(scene, 'tpl-hair');
+    hair.setEnabled(false);
+    scene.getGlowLayerByName('glow')?.addExcludedMesh(hair);
+    hairTemplates.set(scene, hair);
+  }
+  return hair;
+}
 
 function zombieTemplate(scene: Scene, type: ZombieId): BlockTemplate {
   let byType = templates.get(scene);
@@ -348,7 +363,23 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
       part(flame, pack, side * 0.06, -0.55, -1.5 * UNIT);
     }
   }
-  return { root: character.root, height: 1.7, character };
+  const def = ZOMBIES[type];
+  const scale = def.scale ?? 1;
+  character.root.scaling.setAll(scale);
+  let update: Visual['update'];
+  if (def.hair && character.joints.head) {
+    const hair = hairTemplate(scene).createInstance(`${name}-hair`);
+    hair.isPickable = false;
+    hair.parent = character.joints.head;
+    update = (time, moving) => {
+      // Springy curls: a little bounce and sway.
+      const bounce = moving ? Math.abs(Math.sin(time * 3.5)) : 0.3 + 0.3 * Math.sin(time * 1.5);
+      hair.scaling.y = 1 - bounce * 0.025;
+      hair.rotation.z = Math.sin(time * 1.8) * 0.03;
+      hair.rotation.x = moving ? -0.03 : 0;
+    };
+  }
+  return { root: character.root, height: 1.7, character, update };
 }
 
 export function createStructureVisual(scene: Scene, mats: Materials, type: StructureId, name: string): Visual {

@@ -36,6 +36,11 @@ export interface Zombie {
   facing: number;
   /** What it's chewing on right now, if anything. */
   attacking: { kind: 'plant'; id: number } | { kind: 'structure'; index: number } | null;
+  /** Wanderers: the base it's heading for, and the health that makes it move on. */
+  target: number | null;
+  wanderBelow: number;
+  /** When each base was last targeted (tick number), so wanderers tour them all. */
+  visited: number[];
 }
 
 export interface Structure {
@@ -56,6 +61,9 @@ export type SimEvent =
   | { t: 'plantSold'; id: number }
   | { t: 'plantDied'; id: number; x: number; z: number }
   | { t: 'chomp'; x: number; z: number }
+  | { t: 'stomp'; x: number; z: number }
+  | { t: 'bossSpawn'; type: ZombieId }
+  | { t: 'wander'; type: ZombieId; to: number }
   | { t: 'structureHit'; index: number }
   | { t: 'structureDestroyed'; index: number }
   | { t: 'strikeTargeted'; x: number; z: number; delay: number }
@@ -102,6 +110,7 @@ export class Game {
   events: SimEvent[] = [];
 
   private nextId = 1;
+  private tick = 0;
   private waveTime = 0;
   private spawnQueue: QueuedSpawn[] = [];
   private fieldDirty = true;
@@ -251,6 +260,7 @@ export class Game {
   /** Advance one fixed tick. Only does anything during battle. */
   step(): void {
     if (this.phase !== 'battle') return;
+    this.tick++;
     this.waveTime += DT;
     this.sun += this.sunPerSecond() * DT;
     for (const k of Object.keys(this.cooldowns) as AbilityId[]) {
@@ -291,9 +301,10 @@ export class Game {
     }
     const zombie: Zombie = {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
-      slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null,
+      slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
     };
     this.zombies.push(zombie);
+    if (ZOMBIES[type].boss) this.events.push({ t: 'bossSpawn', type });
     return zombie;
   }
 
@@ -326,7 +337,8 @@ export class Game {
       if (zb.hp <= 0) continue;
       const flying = ZOMBIES[zb.type].flying;
       if (flying ? !air : !ground) continue;
-      const d = Math.hypot(zb.x - x, zb.z - z);
+      // Big zombies can be hit from further away.
+      const d = Math.hypot(zb.x - x, zb.z - z) - ZOMBIES[zb.type].radius;
       if (d <= bestD) {
         best = zb;
         bestD = d;
@@ -346,6 +358,11 @@ export class Game {
       if (zb.slowTimer > 0) zb.slowTimer -= DT;
       const speed = def.speed * (zb.slowTimer > 0 ? zb.slowFactor : 1);
       zb.attacking = null;
+
+      if (def.giant) {
+        this.updateGiant(zb, speed);
+        continue;
+      }
 
       const target = this.nearestStructure(zb.x, zb.z);
       if (!target) continue;
@@ -388,6 +405,91 @@ export class Game {
     this.separateZombies();
   }
 
+  /** Giants pick a base, walk straight at it over anything, and stomp plants on the way. */
+  private updateGiant(zb: Zombie, speed: number): void {
+    const def = ZOMBIES[zb.type];
+    let target = zb.target === null ? undefined : this.structures[zb.target];
+
+    // Time to wander? (Or the base is gone.)
+    const fraction = def.wanderEvery;
+    if (target && fraction) {
+      const watching = def.wanderOn === 'self' ? zb.hp : target.hp;
+      if (!target.alive || watching <= zb.wanderBelow) target = this.pickWanderTarget(zb, target);
+    } else if (!target || !target.alive) {
+      target = this.nearestStructure(zb.x, zb.z);
+      if (target) this.setGiantTarget(zb, target);
+    }
+    if (!target) return;
+
+    const dx = target.x - zb.x, dz = target.z - zb.z;
+    const dist = Math.hypot(dx, dz);
+    zb.facing = Math.atan2(dz, dx);
+    if (dist <= STRUCTURES[target.type].radius + def.radius + 0.25) {
+      zb.attacking = { kind: 'structure', index: target.index };
+      this.damageStructure(target, def.dps * DT);
+      return;
+    }
+
+    // Plants in front block the way: stomp everything nearby until they're gone.
+    const blocker = this.plants.find((p) => {
+      const px = p.x - zb.x, pz = p.z - zb.z;
+      return p.hp > 0 && Math.hypot(px, pz) < def.radius + PLANTS[p.type].radius + 0.3 && px * dx + pz * dz > 0;
+    });
+    if (blocker) {
+      zb.attacking = { kind: 'plant', id: blocker.id };
+      const r = def.giant!.stompRadius;
+      for (const p of this.plants) {
+        if (Math.hypot(p.x - zb.x, p.z - zb.z) <= r + PLANTS[p.type].radius) p.hp -= def.dps * DT;
+      }
+      if (this.chompTimer <= 0) {
+        this.chompTimer = 0.6;
+        this.events.push({ t: 'stomp', x: zb.x, z: zb.z });
+      }
+      return;
+    }
+
+    const step = Math.min(dist, speed * DT);
+    zb.x += (dx / dist) * step;
+    zb.z += (dz / dist) * step;
+  }
+
+  private setGiantTarget(zb: Zombie, s: Structure): void {
+    zb.target = s.index;
+    zb.visited[s.index] = this.tick;
+    const fraction = ZOMBIES[zb.type].wanderEvery;
+    if (!fraction) return;
+    // Next threshold below where we are now (e.g. 100% → 75%, 60% → 50%).
+    const self = ZOMBIES[zb.type].wanderOn === 'self';
+    const hp = self ? zb.hp : s.hp;
+    const max = self ? ZOMBIES[zb.type].hp : STRUCTURES[s.type].hp;
+    const step = fraction * max;
+    zb.wanderBelow = (Math.ceil(hp / step - 1e-9) - 1) * step;
+  }
+
+  /**
+   * Head for another standing base: the one visited longest ago (or never),
+   * nearest first on a tie. Stays put if it's the last one standing.
+   */
+  private pickWanderTarget(zb: Zombie, current: Structure): Structure | undefined {
+    let best: Structure | undefined;
+    let bestVisit = Infinity, bestD = Infinity;
+    for (const s of this.structures) {
+      if (!s.alive || s === current) continue;
+      const visit = zb.visited[s.index] ?? -1;
+      const d = Math.hypot(s.x - zb.x, s.z - zb.z);
+      if (visit < bestVisit || (visit === bestVisit && d < bestD)) {
+        best = s;
+        bestVisit = visit;
+        bestD = d;
+      }
+    }
+    const next = best ?? (current.alive ? current : undefined);
+    if (!next) return undefined;
+    this.setGiantTarget(zb, next);
+    if (next !== current) this.events.push({ t: 'wander', type: zb.type, to: next.index });
+    return next;
+  }
+
   private moveToward(zb: Zombie, tx: number, tz: number, dist: number): void {
     const dx = tx - zb.x, dz = tz - zb.z;
     const len = Math.hypot(dx, dz);
@@ -403,10 +505,10 @@ export class Game {
     const list = this.zombies;
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      if (ZOMBIES[a.type].flying) continue;
+      if (ZOMBIES[a.type].flying || ZOMBIES[a.type].giant) continue;
       for (let j = i + 1; j < list.length; j++) {
         const b = list[j];
-        if (ZOMBIES[b.type].flying) continue;
+        if (ZOMBIES[b.type].flying || ZOMBIES[b.type].giant) continue;
         const min = ZOMBIES[a.type].radius + ZOMBIES[b.type].radius;
         const dx = b.x - a.x, dz = b.z - a.z;
         const d2 = dx * dx + dz * dz;
@@ -464,7 +566,7 @@ export class Game {
       if (s.timer > 0) continue;
       const { radius, damage } = ABILITIES.orbitalStrike;
       for (const zb of this.zombies) {
-        if (Math.hypot(zb.x - s.x, zb.z - s.z) <= radius) this.damageZombie(zb, damage);
+        if (Math.hypot(zb.x - s.x, zb.z - s.z) <= radius + ZOMBIES[zb.type].radius) this.damageZombie(zb, damage);
       }
       this.events.push({ t: 'strikeHit', x: s.x, z: s.z, radius });
       this.strikes.splice(i, 1);

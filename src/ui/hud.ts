@@ -128,6 +128,7 @@ export class Hud {
 
     this.updateStructures();
     this.updatePreview(build);
+    this.updateBoss();
   }
 
   private updateStructures(): void {
@@ -148,6 +149,16 @@ export class Hud {
       fill.style.width = `${frac * 100}%`;
       fill.style.background = frac > 0.5 ? 'var(--good)' : frac > 0.25 ? 'var(--sun)' : 'var(--bad)';
     });
+  }
+
+  private updateBoss(): void {
+    const boss = this.game.zombies.find((z) => ZOMBIES[z.type].boss);
+    const el = $('bossbar');
+    el.style.display = boss ? 'block' : 'none';
+    if (!boss) return;
+    const def = ZOMBIES[boss.type];
+    $('boss-name').textContent = `${def.icon} ${def.name.toUpperCase()}`;
+    (el.querySelector('.fill') as HTMLElement).style.width = `${Math.max(0, boss.hp / def.hp) * 100}%`;
   }
 
   private updatePreview(build: boolean): void {

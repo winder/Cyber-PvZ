@@ -1,6 +1,6 @@
 import { Engine } from '@babylonjs/core';
 import { Audio } from './audio';
-import { ABILITIES, PLANTS, STRUCTURES, type AbilityId, type PlantId } from './data/config';
+import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type PlantId } from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { RtsCamera } from './render/camera';
 import { Renderer } from './render/renderer';
@@ -162,7 +162,22 @@ function react(events: SimEvent[]): void {
   for (const e of events) {
     switch (e.t) {
       case 'shot': audio.play(e.kind === 'cryoPea' ? 'cryo' : 'laser'); break;
-      case 'zombieDied': audio.play('zombieDie'); break;
+      case 'zombieDied':
+        if (ZOMBIES[e.type].boss) {
+          audio.play('bossDie');
+          hud.toast(`🎉 ${ZOMBIES[e.type].name} is DOWN! 🎉`, 3500);
+        } else {
+          audio.play('zombieDie');
+        }
+        break;
+      case 'bossSpawn':
+        audio.play('bossRoar');
+        hud.toast(`⚠️ ${ZOMBIES[e.type].name} IS COMING! ⚠️`, 3500);
+        break;
+      case 'stomp': audio.play('stomp'); break;
+      case 'wander':
+        hud.toast(`👣 ${ZOMBIES[e.type].name} is stomping toward the ${STRUCTURES[game.structures[e.to].type].name}!`, 3000);
+        break;
       case 'plantPlaced': audio.play('place'); break;
       case 'plantSold': audio.play('sell'); break;
       case 'plantDied': audio.play('plantDie'); break;

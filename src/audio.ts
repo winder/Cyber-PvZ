@@ -71,12 +71,24 @@ const SYNTHS: Record<SoundId, Synth> = {
     [0, tone('sawtooth', 300, 280, 0.3, 0.1)], [0.3, tone('sawtooth', 250, 230, 0.3, 0.1)],
     [0.6, tone('sawtooth', 200, 100, 0.8, 0.1)],
   ),
+  bossRoar: seq(
+    [0, tone('sawtooth', 90, 55, 1.4, 0.25)],
+    [0, tone('square', 140, 70, 1.2, 0.08)],
+    [0, noise(1.2, 0.35, 500)],
+  ),
+  stomp: seq([0, tone('sine', 70, 30, 0.35, 0.5)], [0, noise(0.25, 0.4, 250)]),
+  bossDie: seq(
+    [0, noise(1.6, 0.6, 700)],
+    [0, tone('sawtooth', 160, 25, 1.8, 0.2)],
+    [0.5, tone('triangle', 523, 523, 0.15, 0.12)], [0.65, tone('triangle', 659, 659, 0.15, 0.12)],
+    [0.8, tone('triangle', 784, 784, 0.4, 0.12)],
+  ),
   click: tone('square', 900, 900, 0.03, 0.04),
   error: tone('square', 160, 120, 0.15, 0.08),
 };
 
 /** Minimum seconds between repeats so a swarm of lasers doesn't deafen anyone. */
-const THROTTLE: Partial<Record<SoundId, number>> = { laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05 };
+const THROTTLE: Partial<Record<SoundId, number>> = { laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4 };
 
 export class Audio {
   private ctx: AudioContext | null = null;

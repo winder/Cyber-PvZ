@@ -164,6 +164,7 @@ export class Renderer {
       const character = t.visual.character;
       if (character) {
         animate(character, this.time, { moving: !chewing, chewing, flying: def.flying }, z.id);
+        t.visual.update?.(this.time, !chewing);
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = 0;
@@ -207,7 +208,20 @@ export class Renderer {
     for (const e of events) {
       switch (e.t) {
         case 'shot': this.beam(e.fromX, e.fromZ, e.toX, e.toZ, e.toAir, PLANTS[e.kind].color); break;
-        case 'zombieDied': this.burst(e.x, e.z, ZOMBIES[e.type].color, ZOMBIES[e.type].flying ? FLY_HEIGHT : 0.6); break;
+        case 'zombieDied': {
+          const def = ZOMBIES[e.type];
+          if (def.boss) {
+            // A big one deserves a big finish.
+            for (let i = 0; i < 6; i++) {
+              const a = (i / 6) * Math.PI * 2;
+              this.burst(e.x + Math.cos(a) * 1.5, e.z + Math.sin(a) * 1.5, i % 2 ? def.color : '#ffcc66', 1 + i);
+            }
+            this.strikeBlast(e.x, e.z, 4);
+          } else {
+            this.burst(e.x, e.z, def.color, def.flying ? FLY_HEIGHT : 0.6);
+          }
+          break;
+        }
         case 'plantDied': this.burst(e.x, e.z, '#3cff6e', 0.6); break;
         case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay); break;
         case 'strikeHit': this.strikeBlast(e.x, e.z, e.radius); break;
