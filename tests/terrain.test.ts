@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAP, STRUCTURES } from '../src/data/config';
 import { Game } from '../src/sim/game';
-import { RAVINE_DEPTH, rayToTerrain, surfaceHeight, terrainHeight } from '../src/render/terrain';
+import { rayToTerrain, surfaceHeight, terrainHeight } from '../src/render/terrain';
 
 describe('terrain', () => {
   it('is actually hilly', () => {
@@ -11,13 +11,19 @@ describe('terrain', () => {
     expect(Math.max(...hs.map(Math.abs))).toBeLessThan(4);
   });
 
-  it('ravines drop straight down', () => {
+  it('ravines are deep cracks carved into the ground', () => {
     for (const r of MAP.ravines) {
-      expect(terrainHeight(r.x, r.z)).toBe(-RAVINE_DEPTH);
-      // A quarter-unit inside the rim is already at the bottom.
-      expect(terrainHeight(r.x - r.w / 2 + 0.25, r.z)).toBe(-RAVINE_DEPTH);
-      // Right on the rim is still ground level.
-      expect(terrainHeight(r.x - r.w / 2, r.z)).toBeGreaterThan(-4);
+      expect(terrainHeight(r.x, r.z)).toBeLessThan(-4);
+    }
+  });
+
+  it('the hole never pokes outside the area zombies cannot cross', () => {
+    for (let x = -36; x <= 36; x += 0.25) {
+      for (let z = -24; z <= 24; z += 0.25) {
+        if (terrainHeight(x, z) >= surfaceHeight(x, z) - 1e-9) continue;
+        const inside = MAP.ravines.some((r) => Math.abs(x - r.x) <= r.w / 2 && Math.abs(z - r.z) <= r.d / 2);
+        expect(inside).toBe(true);
+      }
     }
   });
 

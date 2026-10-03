@@ -38,13 +38,46 @@ export function surfaceHeight(x: number, z: number): number {
   return h;
 }
 
-export function inRavine(x: number, z: number): boolean {
-  return MAP.ravines.some((r) => Math.abs(x - r.x) < r.w / 2 && Math.abs(z - r.z) < r.d / 2);
+/** How wide the cliff face is, from the lip to the floor. */
+const CLIFF_WIDTH = 1.4;
+/** Rounded ravine ends. */
+const CORNER = 1.2;
+
+/** Gentle wobble so ravine edges look natural rather than ruler-straight. */
+function edgeWobble(x: number, z: number): number {
+  // Always 0–0.7, so the hole never pokes outside the area zombies can't cross.
+  return 0.35 + 0.25 * Math.sin(x * 1.3 + z * 0.4) * Math.cos(z * 1.7 - x * 0.6) + 0.1 * Math.sin(x * 3.1 - z * 2.3);
 }
 
-/** Ground height, including the ravine floors. */
+/**
+ * How far (x, z) is inside a ravine's edge (negative = outside). Ravines are
+ * rounded rectangles with wobbly edges, always inside their blocked area.
+ */
+export function ravineDepthInside(x: number, z: number): number {
+  let best = -Infinity;
+  for (const r of MAP.ravines) {
+    const qx = Math.abs(x - r.x) - (r.w / 2 - CORNER), qz = Math.abs(z - r.z) - (r.d / 2 - CORNER);
+    const outside = Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER;
+    best = Math.max(best, -outside - edgeWobble(x, z));
+  }
+  return best;
+}
+
+export function inRavine(x: number, z: number): boolean {
+  return ravineDepthInside(x, z) > 0;
+}
+
+/** Ground height, including the ravines: the ground breaks off and drops down a cliff. */
 export function terrainHeight(x: number, z: number): number {
-  return inRavine(x, z) ? -RAVINE_DEPTH : surfaceHeight(x, z);
+  const top = surfaceHeight(x, z);
+  const inside = ravineDepthInside(x, z);
+  if (inside <= 0) return top;
+  // Steepest right at the lip, easing onto the floor.
+  const f = Math.min(1, inside / CLIFF_WIDTH);
+  const drop = Math.sin((f * Math.PI) / 2);
+  // A few rough ledges on the way down.
+  const rough = Math.sin(x * 2.7 + z * 1.9) * Math.sin(z * 3.3 - x * 1.1) * 0.5 * Math.sin(f * Math.PI);
+  return top + (-RAVINE_DEPTH - top) * drop + rough;
 }
 
 /**

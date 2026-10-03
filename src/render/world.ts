@@ -2,7 +2,6 @@ import {
   Color3, Color4, DirectionalLight, Engine, GlowLayer, HemisphericLight, Mesh, MeshBuilder,
   Scene, StandardMaterial, Vector3, VertexBuffer, VertexData,
 } from '@babylonjs/core';
-import { GradientMaterial } from '@babylonjs/materials/gradient/gradientMaterial';
 import { GridMaterial } from '@babylonjs/materials/grid/gridMaterial';
 import { MAP, type EdgeId } from '../data/config';
 import { RAVINE_DEPTH, surfaceHeight, terrainHeight } from './terrain';
@@ -35,8 +34,8 @@ export function createWorld(engine: Engine): World {
 
   const mats = new Materials(scene);
 
-  // The ground: a finely divided sheet bent into hills, with ravines cut into it.
-  // Vertices land exactly on ravine edges, so the walls drop straight down.
+  // The ground: a finely divided sheet bent into hills, with ravines carved
+  // into it. Its cliff faces are part of the same surface.
   const ground = MeshBuilder.CreateGround('ground', {
     width: MAP.width,
     height: MAP.depth,
@@ -45,25 +44,45 @@ export function createWorld(engine: Engine): World {
     updatable: true,
   }, scene);
   const positions = ground.getVerticesData(VertexBuffer.PositionKind)!;
+  const colors: number[] = [];
+  const top = new Color3(0.09, 0.13, 0.28), deep = new Color3(0.005, 0.005, 0.02);
   for (let i = 0; i < positions.length; i += 3) {
-    positions[i + 1] = terrainHeight(positions[i], positions[i + 2]);
+    const x = positions[i], z = positions[i + 2];
+    const y = terrainHeight(x, z);
+    positions[i + 1] = y;
+    // Darker the further down into a ravine it goes.
+    const t = Math.pow(Math.min(1, Math.max(0, (surfaceHeight(x, z) - y) / RAVINE_DEPTH)), 0.6);
+    const c = Color3.Lerp(top, deep, t);
+    colors.push(c.r, c.g, c.b, 1);
   }
   const normals: number[] = [];
   VertexData.ComputeNormals(positions, ground.getIndices()!, normals);
   ground.updateVerticesData(VertexBuffer.PositionKind, positions);
   ground.updateVerticesData(VertexBuffer.NormalKind, normals);
+  ground.setVerticesData(VertexBuffer.ColorKind, colors);
   ground.refreshBoundingInfo();
+  const earth = new StandardMaterial('terrain', scene);
+  earth.diffuseColor = Color3.White(); // vertex colors do the shading
+  earth.specularColor = new Color3(0.04, 0.05, 0.08);
+  earth.emissiveColor = new Color3(0.01, 0.015, 0.035);
+  ground.material = earth;
+  ground.isPickable = false;
 
-  // Neon grid in 3D: on hills and ravine walls its height lines read like contours.
+  // Neon grid laid over the same surface (lines only). On slopes and cliff
+  // faces its height lines stack up like contours.
   const grid = new GridMaterial('grid', scene);
-  grid.mainColor = new Color3(0.03, 0.04, 0.1);
+  grid.mainColor = new Color3(0, 0, 0.02);
   grid.lineColor = new Color3(0.1, 0.5, 0.7);
   grid.gridRatio = 1;
   grid.majorUnitFrequency = 6;
   grid.minorUnitVisibility = 0.25;
+  // Draw only the lines, so the shaded ground shows through the gaps.
+  grid.linesOnly = true;
   grid.opacity = 0.99;
-  ground.material = grid;
-  ground.isPickable = false;
+  grid.zOffset = -2;
+  const gridLayer = ground.clone('groundGrid');
+  gridLayer.material = grid;
+  gridLayer.isPickable = false;
 
   const hw = MAP.width / 2, hd = MAP.depth / 2;
   /** Points along a straight line on the ground, following the hills. */
@@ -96,57 +115,6 @@ export function createWorld(engine: Engine): World {
     rock.edgesWidth = 3;
     rock.edgesColor = new Color4(0.6, 0.4, 1, 1);
     rock.isPickable = false;
-  }
-
-  // Ravines: lined with walls that glow faintly at the rim and fade to black
-  // at the bottom, so you can see how deep they go. Plus a glowing rim.
-  const depthMat = new GradientMaterial('ravineDepth', scene);
-  depthMat.topColor = new Color3(0.08, 0.35, 0.5);
-  depthMat.bottomColor = new Color3(0, 0, 0.01);
-  depthMat.scale = 1 / RAVINE_DEPTH; // y = 0 → top color, y = -depth → bottom color
-  depthMat.offset = 1;
-  depthMat.smoothness = 1.4;
-  depthMat.disableLighting = true;
-  depthMat.backFaceCulling = false;
-  for (const [i, r] of MAP.ravines.entries()) {
-    // Just inside the terrain's own (one-step) wall, so these cover it.
-    const e = 0.27;
-    const x0 = r.x - r.w / 2 + e, x1 = r.x + r.w / 2 - e, z0 = r.z - r.d / 2 + e, z1 = r.z + r.d / 2 - e;
-    const ring = [
-      ...onGround(x0, z0, x1, z0, 0), ...onGround(x1, z0, x1, z1, 0),
-      ...onGround(x1, z1, x0, z1, 0), ...onGround(x0, z1, x0, z0, 0),
-    ];
-    const bottom = -RAVINE_DEPTH + 0.05;
-    const positions: number[] = [];
-    const indices: number[] = [];
-    for (const pt of ring) positions.push(pt.x, pt.y, pt.z, pt.x, bottom, pt.z);
-    for (let k = 0; k < ring.length - 1; k++) {
-      const a = k * 2;
-      indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
-    }
-    // Floor.
-    const f = positions.length / 3;
-    positions.push(x0, bottom, z0, x1, bottom, z0, x1, bottom, z1, x0, bottom, z1);
-    indices.push(f, f + 1, f + 2, f, f + 2, f + 3);
-    const walls = new Mesh(`ravineWalls${i}`, scene);
-    const data = new VertexData();
-    data.positions = positions;
-    data.indices = indices;
-    data.applyToMesh(walls);
-    walls.material = depthMat;
-    walls.isPickable = false;
-  }
-
-  for (const [i, r] of MAP.ravines.entries()) {
-    const x0 = r.x - r.w / 2, x1 = r.x + r.w / 2, z0 = r.z - r.d / 2, z1 = r.z + r.d / 2;
-    const rim = MeshBuilder.CreateLines(`ravine${i}`, {
-      points: [
-        ...onGround(x0, z0, x1, z0, 0.05), ...onGround(x1, z0, x1, z1, 0.05),
-        ...onGround(x1, z1, x0, z1, 0.05), ...onGround(x0, z1, x0, z0, 0.05),
-      ],
-    }, scene);
-    rim.color = new Color3(0.35, 0.95, 1);
-    rim.isPickable = false;
   }
 
   // Red danger lines along edges where the next wave comes from.
