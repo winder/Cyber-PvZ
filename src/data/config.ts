@@ -8,7 +8,13 @@
 //  `color` is the neon color used for the placeholder shape.
 //  `art` (optional) is a path to a drawing in /public/art, e.g.
 //  'art/solar-flower.png'. When set, the drawing replaces the placeholder.
+//
+//  Zombies can instead be blocky 3D models with a painted skin: set `model`
+//  and `skin` (a PNG in /public/skins). Paint skins in the character editor
+//  (editor/ on the game's site).
 // ============================================================================
+
+import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
 export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack';
@@ -54,6 +60,10 @@ export interface ZombieDef {
   radius: number;
   color: string;
   art?: string;
+  /** Blocky model to build this zombie from (see src/models/models.ts). */
+  model?: ModelId;
+  /** Skin image painted onto the model, e.g. 'skins/cyborg.png'. */
+  skin?: string;
 }
 
 export interface StructureDef {
@@ -138,6 +148,8 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     flying: false,
     radius: 0.35,
     color: '#a2d36b',
+    model: 'humanoid',
+    skin: 'skins/cyborg.png',
   },
   riotBot: {
     name: 'Riot Shield Bot',
@@ -160,6 +172,8 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     flying: true,
     radius: 0.35,
     color: '#ff8a3d',
+    model: 'jetpackHumanoid',
+    skin: 'skins/jetpack.png',
   },
 };
 

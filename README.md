@@ -33,9 +33,19 @@ Everything you'd want to tweak is in **`src/data/config.ts`**: plant costs,
 health, damage, zombie speed, the waves, the map, and the sun economy. Change a
 number, save, and the game reloads.
 
-**Your own art:** put a picture in `public/art/` (a PNG with a see-through
-background works best) and set `art: 'art/your-picture.png'` on that plant,
-zombie, or building in `config.ts`.
+**Paint the zombies:** open the **Character Editor** (`/editor/` on the game's
+site, or the link on the title screen). Paint on the 3D model or the unfolded
+skin, then press **Save to game**. Saved skins live in that browser only. To make
+a skin the official one for everyone, press **⬇ PNG** and put the file in
+`public/skins/` (e.g. `public/skins/cyborg.png`).
+
+Skins use the Minecraft skin layout (at 128×128), so Minecraft skins can be
+loaded with **⬆ Load**. Zombies with `model` and `skin` in `config.ts` use
+skins; the box shapes are defined in `src/models/models.ts`.
+
+**Your own art (flat):** put a picture in `public/art/` (a PNG with a
+see-through background works best) and set `art: 'art/your-picture.png'` on
+that plant, zombie, or building in `config.ts`.
 
 **Your own sounds:** put a sound in `public/sounds/` and add it to
 `SOUND_FILES` in `config.ts`, e.g. `laser: 'sounds/pew.mp3'`.
@@ -45,6 +55,7 @@ zombie, or building in `config.ts`.
 - `src/sim/` — game rules, no graphics. Fixed 30 ticks/second.
 - `src/render/` — Babylon.js 3D view and camera.
 - `src/ui/` — HTML HUD and minimap.
+- `src/models/` — blocky character models; `src/editor/` — the character editor.
 - `npm test` runs the rule tests, including balance checks that a sensible
   defense can win and no defense loses. Run them after changing numbers.
 - Pushing to `main` deploys to GitHub Pages (`.github/workflows/deploy.yml`).

@@ -225,6 +225,13 @@ button:disabled { opacity: 0.4; cursor: default; }
   text-shadow: 0 0 18px rgba(60, 255, 110, 0.8), 0 0 4px #fff;
 }
 #overlay p { color: var(--dim); font-size: 17px; line-height: 1.5; }
+#overlay .editor-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--good);
+  font-weight: 600;
+  text-decoration: none;
+}
 #overlay-btn { font-size: 26px; font-weight: 700; padding: 12px 40px; margin-top: 8px; border-color: var(--good); }
 
 /* ---- small screens (phones / small tablets) ---- */

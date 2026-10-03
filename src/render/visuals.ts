@@ -4,6 +4,10 @@ import {
 import {
   PLANTS, STRUCTURES, ZOMBIES, type PlantId, type StructureId, type ZombieId,
 } from '../data/config';
+import { skinUrl } from '../skins';
+import {
+  BlockTemplate, loadSkinTexture, skinMaterial, UNIT, type BlockCharacter,
+} from './blockModel';
 
 /**
  * A thing drawn in the world. `root` is moved/rotated by the renderer.
@@ -13,6 +17,8 @@ export interface Visual {
   root: TransformNode;
   turret?: TransformNode;
   height: number;
+  /** Set for blocky skinned characters, so the renderer can animate them. */
+  character?: BlockCharacter;
 }
 
 /** Shared neon materials, one per color+style. */
@@ -304,9 +310,45 @@ export function createPlantVisual(scene: Scene, mats: Materials, type: PlantId, 
 }
 
 export function createZombieVisual(scene: Scene, mats: Materials, type: ZombieId, name: string): Visual {
-  const art = ZOMBIES[type].art;
-  if (art) return standee(scene, mats, art, 1.8, name);
+  const def = ZOMBIES[type];
+  if (def.art) return standee(scene, mats, def.art, 1.8, name);
+  if (def.model) return skinnedZombie(scene, mats, type, name);
   return zombieFactories[type](scene, mats, name);
+}
+
+const templates = new WeakMap<Scene, Map<ZombieId, BlockTemplate>>();
+
+function zombieTemplate(scene: Scene, type: ZombieId): BlockTemplate {
+  let byType = templates.get(scene);
+  if (!byType) {
+    byType = new Map();
+    templates.set(scene, byType);
+  }
+  let t = byType.get(type);
+  if (!t) {
+    const def = ZOMBIES[type];
+    const tex = loadSkinTexture(skinUrl(type, def.skin ?? ''), scene);
+    t = new BlockTemplate(scene, def.model!, skinMaterial(`skin-${type}`, tex, scene), `tpl-${type}`);
+    // Skins shouldn't bloom like the neon parts do.
+    const glow = scene.getGlowLayerByName('glow');
+    for (const p of t.parts) glow?.addExcludedMesh(p.mesh);
+    byType.set(type, t);
+  }
+  return t;
+}
+
+function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: string): Visual {
+  const character = zombieTemplate(scene, type).spawn(name, scene);
+  const pack = character.joints.jetpack;
+  if (pack) {
+    // Neon flames out of the nozzle.
+    for (const side of [-1, 1]) {
+      const flame = MeshBuilder.CreateCylinder(`${name}-flame${side}`, { height: 0.5, diameterTop: 0.14, diameterBottom: 0, tessellation: 6 }, scene);
+      flame.material = mats.neon('#ff8a3d', 1.6);
+      part(flame, pack, side * 0.06, -0.55, -1.5 * UNIT);
+    }
+  }
+  return { root: character.root, height: 1.7, character };
 }
 
 export function createStructureVisual(scene: Scene, mats: Materials, type: StructureId, name: string): Visual {

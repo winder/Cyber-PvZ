@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#05050f" />
+    <title>Character Editor · Cyber Plants vs Zombies</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+    <link rel="stylesheet" href="../src/editor/editor.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🎨 Character Editor</h1>
+      <nav id="characters"></nav>
+      <a class="btn play" href="../">▶ Play</a>
+    </header>
+
+    <main>
+      <section id="preview">
+        <canvas id="view3d"></canvas>
+        <div class="overlay-top">
+          <div class="seg" id="mode">
+            <button data-mode="paint" class="on" title="Paint on the model">🖌 Paint</button>
+            <button data-mode="turn" title="Drag to turn the model">✋ Turn</button>
+          </div>
+          <button id="btn-walk" class="btn" title="Walk animation">🚶 Walk</button>
+        </div>
+        <div class="hint">Drag the background to turn · pinch or scroll to zoom</div>
+      </section>
+
+      <section id="paint">
+        <div id="tools">
+          <div class="seg" id="tool">
+            <button data-tool="pencil" class="on" title="Pencil (B)">✏️</button>
+            <button data-tool="eraser" title="Eraser (E)">🧽</button>
+            <button data-tool="fill" title="Fill one side (G)">🪣</button>
+            <button data-tool="picker" title="Pick a color (I)">💧</button>
+          </div>
+          <div class="seg" id="size">
+            <button data-size="1" class="on" title="Small brush">●</button>
+            <button data-size="2" title="Medium brush"><big>●</big></button>
+            <button data-size="4" title="Big brush"><big><big>●</big></big></button>
+          </div>
+          <button id="btn-mirror" class="btn" title="Paint both sides at once (M)">🪞 Mirror</button>
+          <button id="btn-undo" class="btn" title="Undo (Ctrl+Z)">↩️</button>
+          <button id="btn-redo" class="btn" title="Redo (Ctrl+Y)">↪️</button>
+        </div>
+
+        <div id="palette">
+          <input type="color" id="custom-color" title="Any color" />
+          <div id="swatches"></div>
+        </div>
+
+        <div id="flat-wrap">
+          <canvas id="flat"></canvas>
+        </div>
+        <div id="where">&nbsp;</div>
+
+        <div id="actions">
+          <button id="btn-save" class="btn primary">💾 Save to game</button>
+          <button id="btn-reset" class="btn" title="Go back to the original skin">⟲ Original</button>
+          <button id="btn-download" class="btn" title="Save the skin as a PNG file">⬇ PNG</button>
+          <label class="btn" title="Load a PNG skin (Minecraft skins work too)">⬆ Load<input type="file" id="file" accept="image/png,image/*" hidden /></label>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast"></div>
+
+    <script type="module" src="../src/editor/main.ts"></script>
+  </body>
+</html>

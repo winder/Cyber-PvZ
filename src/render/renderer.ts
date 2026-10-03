@@ -3,6 +3,7 @@ import {
 } from '@babylonjs/core';
 import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
+import { animate } from './blockModel';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
 } from './visuals';
@@ -160,7 +161,15 @@ export class Renderer {
         : chewing ? Math.abs(Math.sin(this.time * 12 + z.id)) * 0.12 : Math.abs(Math.sin(this.time * 8 + z.id)) * 0.06;
       root.position.set(t.x, bob, t.z);
       root.rotation.y = yaw(z.facing);
-      root.rotation.x = chewing ? 0.25 : 0;
+      const character = t.visual.character;
+      if (character) {
+        animate(character, this.time, { moving: !chewing, chewing, flying: def.flying }, z.id);
+        // Flyers lean into the wind; walkers bob instead of tilting.
+        root.rotation.x = def.flying ? 0.3 : 0;
+        if (!def.flying) root.position.y = 0;
+      } else {
+        root.rotation.x = chewing ? 0.25 : 0;
+      }
       this.setBar(t.bar, z.hp / def.hp);
     }
     for (const [id, t] of this.zombies) {

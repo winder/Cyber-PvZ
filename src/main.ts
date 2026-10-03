@@ -292,7 +292,8 @@ if (skipTitle) {
   'Cyber Plants vs Zombies',
   `Futuristic zombies are coming for the <b>Mega-Brain Greenhouse</b>!<br>
    Plant your defense, then press <b>GO</b>. Survive ${game.totalWaves} waves.<br>
-   <small>Drag to move · pinch or scroll to zoom · twist or right-drag to turn</small>`,
+   <small>Drag to move · pinch or scroll to zoom · twist or right-drag to turn</small><br>
+   <a class="editor-link" href="editor/">🎨 Paint your zombies in the Character Editor</a>`,
   'Play',
 );
 

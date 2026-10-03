@@ -123,6 +123,19 @@ Cost sun, have a cooldown, require the Spaceship to be standing.
 - **Sound later**: recorded effects; setting a file path for a sound name
   replaces the synthesized one.
 
+## Character editor
+
+A second page at `/editor/` for painting character skins.
+
+- Characters are blocky box models (head, body, arms, legs, plus extras like a
+  jetpack) with Minecraft-layout skins at 128×128. Minecraft skins import.
+- Cyborg Zombie and Jetpack Zombie start from skins based on Wesley's drawings.
+- Paint on the 3D model or the unfolded skin: pencil, eraser (makes holes),
+  fill (one face at a time), color picker, three brush sizes, mirror
+  left↔right, undo/redo, walk-animation preview.
+- **Save to game** stores the skin in the browser; the game uses it instead of
+  the default. **⬇ PNG** exports it to commit as the new default.
+
 ## Tech
 
 - TypeScript + **Babylon.js** + **Vite**. Vitest for logic tests.
