@@ -126,9 +126,13 @@ Cost sun, have a cooldown, require the Spaceship to be standing.
 ## Final boss: ZomWes 8000
 
 - Appears in the final wave, announced with a roar and a boss health bar.
-- About 10× normal size (16 units tall): too big to see whole when zoomed in.
-- Glossy, curly, shoulder-length brown hair made of smooth 3D ringlets,
-  deliberately unlike the blocky style of everything else.
+- Rides in a **Westbot** (from Wesley's drawing): a hulking robot about 16
+  units tall (too big to see whole when zoomed in) with a red visor, a fanged
+  mouth glowing blue, red drips, a blue core, one arm raised, and huge
+  bell-bottom legs with torn green hems.
+- A little robot driver sits on its head, pulling two control levers.
+- A small nest of glossy, smooth 3D curls rings the driver, deliberately unlike
+  the blocky style of everything else.
 - Walks in a straight line over rocks and cliffs. Stomps every plant near him
   when one is in his way.
 - Wanders: each time the base he's attacking loses another 25% of its health,

@@ -5,13 +5,25 @@ import {
 import { ZOMBIES, type ZombieId } from '../data/config';
 import { MODELS } from '../models/models';
 import { animate, assemble, buildPartMesh, skinMaterial, type BlockCharacter } from '../render/blockModel';
-import { buildCurlyHair } from '../render/hair';
+import { buildHair } from '../render/hair';
+import { skinUnits } from '../models/models';
 import { clearCustomSkin, getCustomSkin, saveCustomSkin } from '../skins';
 import { faceAt, faceLabel, layoutFaces, mirrorPixel, type FaceInfo } from './faces';
 
-/** Skins are edited at 128×128 (Minecraft layout at double detail). */
-const TEX = 128;
-const FLAT_SCALE = 4;
+/**
+ * Skin size in pixels for the character being edited: the Minecraft layout at
+ * double detail (128×128), or bigger for models with more parts.
+ */
+let TEX = 128;
+/** The flat view is drawn this many pixels across its longest side. */
+const FLAT_SIZE = 768;
+let FLAT_SCALE = FLAT_SIZE / TEX;
+/** Part of the skin the flat view shows: just the area the parts use. */
+let view = { x: 0, y: 0, w: 128, h: 128 };
+
+function texSizeFor(id: ZombieId): number {
+  return skinUnits(ZOMBIES[id].model!) * 2;
+}
 const UNDO_LIMIT = 60;
 /** How different (0–255 per channel) a pixel can be and still get filled. */
 const FILL_TOLERANCE = 40;
@@ -102,7 +114,10 @@ async function getDoc(id: ZombieId): Promise<Doc> {
   const saved = getCustomSkin(id);
   if (saved) {
     try {
-      drawSkinImage(ctx, await loadImage(saved));
+      const img = await loadImage(saved);
+      // Saved for an older version of this model? Start from the original instead.
+      if (img.width !== TEX) throw new Error('outdated skin');
+      drawSkinImage(ctx, img);
     } catch {
       await loadOriginal(id, doc);
     }
@@ -285,9 +300,19 @@ padMat.emissiveColor = new Color3(0.05, 0.25, 0.35);
 pad.material = padMat;
 pad.isPickable = false;
 
-const liveTex = new DynamicTexture('skin', { width: TEX, height: TEX }, scene, false, Texture.NEAREST_SAMPLINGMODE);
-const liveCtx = liveTex.getContext() as unknown as CanvasRenderingContext2D;
+let liveTex = new DynamicTexture('skin', { width: TEX, height: TEX }, scene, false, Texture.NEAREST_SAMPLINGMODE);
+let liveCtx = liveTex.getContext() as unknown as CanvasRenderingContext2D;
 const skinMat = skinMaterial('skinMat', liveTex, scene);
+
+/** Swap in a texture of the right size when switching to a bigger/smaller skin. */
+function resizeLiveTexture(size: number): void {
+  if (liveTex.getSize().width === size) return;
+  liveTex.dispose();
+  liveTex = new DynamicTexture('skin', { width: size, height: size }, scene, false, Texture.NEAREST_SAMPLINGMODE);
+  liveTex.hasAlpha = true;
+  liveCtx = liveTex.getContext() as unknown as CanvasRenderingContext2D;
+  skinMat.diffuseTexture = liveTex;
+}
 
 let character: BlockCharacter | null = null;
 let extras: AbstractMesh[] = [];
@@ -302,16 +327,17 @@ function buildCharacter(id: ZombieId): void {
   pickable.clear();
   const model = ZOMBIES[id].model!;
   const parts = MODELS[model].parts.map((def) => {
-    const mesh = buildPartMesh(`part-${def.role}`, def, scene);
+    const mesh = buildPartMesh(`part-${def.role}`, def, scene, skinUnits(model));
     mesh.material = skinMat;
     pickable.add(mesh);
     return { def, mesh };
   });
-  character = assemble('character', scene, parts);
+  character = assemble('character', scene, model, parts);
   // Hair isn't painted (it's 3D curls), but show it so you can see the look.
   // It's not pickable, so you can still paint the head underneath.
-  if (ZOMBIES[id].hair && character.joints.head) {
-    const hair = buildCurlyHair(scene, 'hair');
+  const kind = ZOMBIES[id].hair;
+  if (kind && character.joints.head) {
+    const hair = buildHair(scene, 'hair', kind, model);
     hair.parent = character.joints.head;
     extras.push(hair);
   }
@@ -410,7 +436,6 @@ function zoom(factor: number): void {
 // -----------------------------------------------------------------------------
 
 const flat = $<HTMLCanvasElement>('flat');
-flat.width = flat.height = TEX * FLAT_SCALE;
 const flatCtx = flat.getContext('2d')!;
 let hoverFace: FaceInfo | undefined;
 
@@ -418,8 +443,10 @@ function drawFlat(): void {
   const s = FLAT_SCALE;
   const g = flatCtx;
   g.imageSmoothingEnabled = false;
+  g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = '#05060c';
   g.fillRect(0, 0, flat.width, flat.height);
+  g.translate(-view.x * s, -view.y * s);
   // Checkerboard behind each face so see-through pixels are obvious.
   for (const f of doc.faces) {
     for (let y = f.y; y < f.y + f.h; y += 2) {
@@ -429,7 +456,7 @@ function drawFlat(): void {
       }
     }
   }
-  g.drawImage(doc.canvas, 0, 0, flat.width, flat.height);
+  g.drawImage(doc.canvas, 0, 0, TEX * s, TEX * s);
   g.lineWidth = 1;
   for (const f of doc.faces) {
     g.strokeStyle = f === hoverFace ? 'rgba(60,255,110,0.95)' : 'rgba(80,220,255,0.25)';
@@ -438,11 +465,24 @@ function drawFlat(): void {
   }
 }
 
+/** Crop the flat view to the parts (with a small margin) so they're big enough to paint. */
+function fitFlatView(): void {
+  const pad = 2;
+  const x0 = Math.max(0, Math.min(...doc.faces.map((f) => f.x)) - pad);
+  const y0 = Math.max(0, Math.min(...doc.faces.map((f) => f.y)) - pad);
+  const x1 = Math.min(TEX, Math.max(...doc.faces.map((f) => f.x + f.w)) + pad);
+  const y1 = Math.min(TEX, Math.max(...doc.faces.map((f) => f.y + f.h)) + pad);
+  view = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  FLAT_SCALE = FLAT_SIZE / Math.max(view.w, view.h);
+  flat.width = Math.round(view.w * FLAT_SCALE);
+  flat.height = Math.round(view.h * FLAT_SCALE);
+}
+
 function flatPixel(e: PointerEvent): { x: number; y: number } {
   const r = flat.getBoundingClientRect();
   return {
-    x: Math.min(TEX - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * TEX))),
-    y: Math.min(TEX - 1, Math.max(0, Math.floor(((e.clientY - r.top) / r.height) * TEX))),
+    x: Math.min(TEX - 1, Math.max(0, view.x + Math.floor(((e.clientX - r.left) / r.width) * view.w))),
+    y: Math.min(TEX - 1, Math.max(0, view.y + Math.floor(((e.clientY - r.top) / r.height) * view.h))),
   };
 }
 
@@ -517,7 +557,10 @@ function setColor(color: string): void {
 async function selectCharacter(id: ZombieId): Promise<void> {
   state.id = id;
   for (const b of document.querySelectorAll<HTMLElement>('#characters button')) b.classList.toggle('on', b.dataset.id === id);
+  TEX = texSizeFor(id);
+  resizeLiveTexture(TEX);
   doc = await getDoc(id);
+  fitFlatView();
   buildCharacter(id);
   changed();
 }
@@ -658,4 +701,4 @@ setColor(state.color);
 void selectCharacter(state.id);
 
 // Handy for debugging in the browser console.
-Object.assign(window, { editor: { state, docs, camera } });
+Object.assign(window, { editor: { state, docs, camera, view: () => view } });

@@ -1,6 +1,7 @@
 import {
   Color3, Mesh, MeshBuilder, Scene, StandardMaterial, Vector3, VertexBuffer,
 } from '@babylonjs/core';
+import { MODELS, type ModelId } from '../models/models';
 import { UNIT } from './blockModel';
 
 // ZomWes 8000's hair: smooth, glossy corkscrew curls. Deliberately the
@@ -155,6 +156,71 @@ export function buildCurlyHair(scene: Scene, name: string): Mesh {
   hair.isPickable = false;
   hair.material = hairMaterial(scene);
   return hair;
+}
+
+/**
+ * A little curly nest: coiled strands twisted round a ring sitting on top of
+ * the head (around whoever is riding up there), with a few curls springing out.
+ * `y` is the top of the head and `radius` the ring size, in skin units.
+ */
+export function buildNestHair(scene: Scene, name: string, y: number, radius: number): Mesh {
+  const rand = rng(8001);
+  const pick = () => Color3.FromHexString(BROWNS[Math.floor(rand() * BROWNS.length)]);
+  const parts: Mesh[] = [];
+  let k = 0;
+
+  // Three strands coiling around the ring, out of step with each other.
+  for (let strand = 0; strand < 3; strand++) {
+    const coils = 10 + strand * 2;
+    const phase = (strand / 3) * Math.PI * 2;
+    const wobble = 0.8 - strand * 0.12;
+    const path: Vector3[] = [];
+    const steps = 260;
+    for (let i = 0; i <= steps; i++) {
+      const th = (i / steps) * Math.PI * 2;
+      const c = coils * th + phase;
+      const r = radius + Math.cos(c) * wobble;
+      path.push(v(Math.cos(th) * r, y + 0.7 + Math.sin(c) * wobble * 0.9, Math.sin(th) * r));
+    }
+    parts.push(tube(scene, `${name}-strand${k++}`, path, 0.36, 0.36, pick()));
+  }
+
+  // Springy curls poking up and out of the nest.
+  for (let i = 0; i < 11; i++) {
+    const th = (i / 11) * Math.PI * 2 + rand() * 0.3;
+    const ox = Math.cos(th), oz = Math.sin(th);
+    const path: Vector3[] = [];
+    const turns = 1.6 + rand() * 0.8;
+    const up = rand() < 0.5;
+    for (let n = 0; n <= 40; n++) {
+      const t = n / 40;
+      const a = t * turns * Math.PI * 2 + rand() * 0.01;
+      const out = radius + 0.3 + t * 1.6;
+      const r = 0.55 * (1 - 0.4 * t);
+      path.push(v(
+        ox * out + -oz * Math.cos(a) * r,
+        y + 0.9 + (up ? t * 1.6 : t * 0.4) + Math.sin(a) * r,
+        oz * out + ox * Math.cos(a) * r,
+      ));
+    }
+    parts.push(tube(scene, `${name}-sprig${k++}`, path, 0.3, 0.14, pick()));
+  }
+
+  const hair = Mesh.MergeMeshes(parts, true, true)!;
+  hair.name = name;
+  hair.isPickable = false;
+  hair.material = hairMaterial(scene);
+  return hair;
+}
+
+/** Hair of the given kind, shaped to sit on this model's head joint. */
+export function buildHair(scene: Scene, name: string, kind: 'curly' | 'nest', model: ModelId): Mesh {
+  if (kind === 'curly') return buildCurlyHair(scene, name);
+  const head = MODELS[model].parts.find((p) => p.role === 'head')!;
+  const top = head.offset[1] + head.size[1] / 2;
+  // Wide enough to go round the rider and its controls.
+  const radius = Math.min(head.size[0], head.size[2]) / 2 - 0.3;
+  return buildNestHair(scene, name, top, radius);
 }
 
 function hairMaterial(scene: Scene): StandardMaterial {

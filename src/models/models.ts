@@ -3,7 +3,8 @@
 //
 //  Each part is a box. Its texture is "unfolded" onto the skin image the same
 //  way a Minecraft skin is, so 64×64 Minecraft skins work too. Skins can be
-//  any multiple of 64 wide (we use 128×128 for more detail).
+//  any multiple of 64 wide (we use 128×128 for more detail). Models with
+//  more parts can use a bigger page (`skinUnits`).
 //
 //  Units: 1 unit = 1 pixel of a 64×64 skin. A humanoid is 32 units tall.
 //  The model faces +z. Its right side is +x.
@@ -12,20 +13,27 @@
 // ============================================================================
 
 export type FaceName = 'top' | 'bottom' | 'right' | 'front' | 'left' | 'back';
-export type PartRole = 'head' | 'body' | 'armR' | 'armL' | 'legR' | 'legL' | 'jetpack';
-export type ModelId = 'humanoid' | 'jetpackHumanoid';
+export type PartRole =
+  | 'head' | 'body' | 'armR' | 'armL' | 'legR' | 'legL' | 'jetpack'
+  | 'footR' | 'footL' | 'driverBody' | 'driverHead'
+  | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL';
+export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
 export interface PartDef {
   role: PartRole;
   label: string;
-  /** Width (x), height (y), depth (z). */
+  /** Width (x), height (y), depth (z). For tapered parts, the size at the bottom. */
   size: [number, number, number];
+  /** Tapered parts: how wide the top is compared with the bottom (0.5 = half). */
+  taper?: number;
   /** Top-left corner of this part's unfolded box in the skin. */
   uv: [number, number];
   /** Joint the part turns around, measured from the feet. */
   pivot: [number, number, number];
+  /** Part this one is attached to (moves with it). Must come earlier in the list. */
+  parent?: PartRole;
   /** Box center, measured from the pivot. */
   offset: [number, number, number];
   /** Resting rotation (radians) around x, y, z. */
@@ -35,10 +43,18 @@ export interface PartDef {
 export interface ModelDef {
   label: string;
   parts: PartDef[];
+  /** Skin page size in units (default 64, like Minecraft). */
+  skinUnits?: number;
+  /** How far the legs swing when walking (radians). */
+  walkSwing?: number;
 }
 
-/** Skin layout size in units. */
+/** Default skin layout size in units. */
 export const SKIN_UNITS = 64;
+
+export function skinUnits(model: ModelId): number {
+  return MODELS[model].skinUnits ?? SKIN_UNITS;
+}
 
 const ARMS_FORWARD: [number, number, number] = [-Math.PI / 2, 0, 0];
 
@@ -62,6 +78,31 @@ export const MODELS: Record<ModelId, ModelDef> = {
       ...HUMANOID_PARTS,
       // Uses the spare corner of the skin (where Minecraft keeps the left-arm overlay).
       { role: 'jetpack', label: 'Jetpack', size: [5, 13, 3], uv: [48, 48], pivot: [0, 22, -2], offset: [0, 0, -1.5] },
+    ],
+  },
+  // ZomWes 8000's walker: a hulking robot on bell-bottom legs, with a little
+  // driver on its head pulling levers. From Wesley's drawing.
+  westbot: {
+    label: 'Westbot',
+    skinUnits: 128,
+    walkSwing: 0.25,
+    parts: [
+      { role: 'body', label: 'Body', size: [12, 12, 6], uv: [40, 0], pivot: [0, 26, 0], offset: [0, -6, 0] },
+      { role: 'head', label: 'Head', size: [10, 9, 9], uv: [0, 0], pivot: [0, 26, 0], offset: [0, 4.5, 0] },
+      // Right arm raised high, left arm swung across the body.
+      { role: 'armR', label: 'Right arm', size: [4, 14, 4], uv: [78, 0], pivot: [8, 24, 0], offset: [0, -5, 0], rest: [-2.6, 0, 0.35] },
+      { role: 'armL', label: 'Left arm', size: [4, 14, 4], uv: [96, 0], pivot: [-8, 24, 0], offset: [0, -5, 0], rest: [-1.0, 0, 0.75] },
+      // Bell-bottoms: narrow at the hip, flaring out wide at the hem.
+      { role: 'legR', label: 'Right leg', size: [10, 14, 10], taper: 0.5, uv: [0, 20], pivot: [5, 14, 0], offset: [0, -7, 0] },
+      { role: 'legL', label: 'Left leg', size: [10, 14, 10], taper: 0.5, uv: [42, 20], pivot: [-5, 14, 0], offset: [0, -7, 0] },
+      // The driver, riding on the head.
+      { role: 'driverBody', label: 'Driver body', size: [4, 4, 3], uv: [84, 20], pivot: [0, 35, 0], parent: 'head', offset: [0, 2, 0] },
+      { role: 'driverHead', label: 'Driver head', size: [4, 4, 4], uv: [84, 28], pivot: [0, 39, 0], parent: 'driverBody', offset: [0, 2, 0] },
+      { role: 'driverArmR', label: 'Driver right arm', size: [1, 4, 1], uv: [100, 20], pivot: [2.5, 38.5, 0], parent: 'driverBody', offset: [0, -2, 0], rest: [-1.0, 0, 0] },
+      { role: 'driverArmL', label: 'Driver left arm', size: [1, 4, 1], uv: [105, 20], pivot: [-2.5, 38.5, 0], parent: 'driverBody', offset: [0, -2, 0], rest: [-1.0, 0, 0] },
+      // Control levers sticking up out of the robot's head.
+      { role: 'leverR', label: 'Right lever', size: [1, 3, 1], uv: [100, 27], pivot: [2.3, 35, 2.2], parent: 'head', offset: [0, 1.5, 0], rest: [0.45, 0, 0] },
+      { role: 'leverL', label: 'Left lever', size: [1, 3, 1], uv: [105, 27], pivot: [-2.3, 35, 2.2], parent: 'head', offset: [0, 1.5, 0], rest: [0.45, 0, 0] },
     ],
   },
 };

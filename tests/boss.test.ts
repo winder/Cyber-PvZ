@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STRUCTURES, ZOMBIES } from '../src/data/config';
+import { MODELS } from '../src/models/models';
+import { UNIT } from '../src/render/blockModel';
 import { Game, TICK_RATE, type SimEvent } from '../src/sim/game';
 
 // Peashooter spots spread around the three bases, nearest rings first.
@@ -66,7 +68,12 @@ describe('ZomWes 8000', () => {
     expect(boss.hp > 0 || g.phase === 'lost').toBe(true);
   });
 
-  it('is big', () => {
-    expect(ZOMBIES.zomwes.scale).toBeGreaterThanOrEqual(10);
+  it('is massive (about 16 units tall without the driver), with a rider on top', () => {
+    const def = ZOMBIES.zomwes;
+    const parts = MODELS[def.model!].parts;
+    const top = (roles: string[]) => Math.max(...parts.filter((p) => roles.includes(p.role)).map((p) => p.pivot[1] + p.offset[1] + p.size[1] / 2));
+    const robot = top(['head', 'body']) * UNIT * def.scale!;
+    expect(robot).toBeGreaterThan(15);
+    expect(top(['driverHead'])).toBeGreaterThan(top(['head']));
   });
 });

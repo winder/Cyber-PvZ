@@ -66,8 +66,8 @@ export interface ZombieDef {
   skin?: string;
   /** How much bigger to draw the model (1 = normal). */
   scale?: number;
-  /** Extra decoration on the model. */
-  hair?: 'curly';
+  /** Extra decoration: a full head of curls, or a little nest round a rider. */
+  hair?: 'curly' | 'nest';
   /** Gets a boss health bar and announcements. */
   boss?: boolean;
   /**
@@ -204,10 +204,10 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     flying: false,
     radius: 3,
     color: '#b14dff',
-    model: 'humanoid',
+    model: 'westbot',
     skin: 'skins/zomwes.png',
-    scale: 10,
-    hair: 'curly',
+    scale: 9,
+    hair: 'nest',
     boss: true,
     giant: { stompRadius: 4 },
     wanderEvery: 0.25,

@@ -1,5 +1,5 @@
 import {
-  FACE_LABELS, MODELS, SKIN_UNITS, faceRects, type FaceName, type ModelId, type PartRole,
+  FACE_LABELS, MODELS, faceRects, skinUnits, type FaceName, type ModelId, type PartRole,
 } from '../models/models';
 
 /** One face of one part, in skin pixels. */
@@ -14,7 +14,7 @@ export interface FaceInfo {
 }
 
 export function layoutFaces(model: ModelId, texSize: number): FaceInfo[] {
-  const s = texSize / SKIN_UNITS;
+  const s = texSize / skinUnits(model);
   const out: FaceInfo[] = [];
   for (const part of MODELS[model].parts) {
     const rects = faceRects(part);
@@ -34,7 +34,9 @@ export function faceLabel(f: FaceInfo): string {
   return `${f.partLabel} · ${FACE_LABELS[f.face]}`;
 }
 
-const MIRROR_ROLE: Partial<Record<PartRole, PartRole>> = { armR: 'armL', armL: 'armR', legR: 'legL', legL: 'legR' };
+const MIRROR_ROLE: Partial<Record<PartRole, PartRole>> = {
+  armR: 'armL', armL: 'armR', legR: 'legL', legL: 'legR', footR: 'footL', footL: 'footR',
+};
 const MIRROR_FACE: Partial<Record<FaceName, FaceName>> = { right: 'left', left: 'right' };
 
 /**

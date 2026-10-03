@@ -8,7 +8,9 @@ import { skinUrl } from '../skins';
 import {
   BlockTemplate, loadSkinTexture, skinMaterial, UNIT, type BlockCharacter,
 } from './blockModel';
-import { buildCurlyHair } from './hair';
+import { skinUnits, type ModelId } from '../models/models';
+import { getCustomSkin } from '../skins';
+import { buildHair } from './hair';
 
 /**
  * A thing drawn in the world. `root` is moved/rotated by the renderer.
@@ -320,15 +322,21 @@ export function createZombieVisual(scene: Scene, mats: Materials, type: ZombieId
 }
 
 const templates = new WeakMap<Scene, Map<ZombieId, BlockTemplate>>();
-const hairTemplates = new WeakMap<Scene, Mesh>();
+const hairTemplates = new WeakMap<Scene, Map<string, Mesh>>();
 
-function hairTemplate(scene: Scene): Mesh {
-  let hair = hairTemplates.get(scene);
+function hairTemplate(scene: Scene, kind: 'curly' | 'nest', model: ModelId): Mesh {
+  let byKind = hairTemplates.get(scene);
+  if (!byKind) {
+    byKind = new Map();
+    hairTemplates.set(scene, byKind);
+  }
+  const key = `${kind}:${model}`;
+  let hair = byKind.get(key);
   if (!hair) {
-    hair = buildCurlyHair(scene, 'tpl-hair');
+    hair = buildHair(scene, `tpl-hair-${key}`, kind, model);
     hair.setEnabled(false);
     scene.getGlowLayerByName('glow')?.addExcludedMesh(hair);
-    hairTemplates.set(scene, hair);
+    byKind.set(key, hair);
   }
   return hair;
 }
@@ -343,6 +351,13 @@ function zombieTemplate(scene: Scene, type: ZombieId): BlockTemplate {
   if (!t) {
     const def = ZOMBIES[type];
     const tex = loadSkinTexture(skinUrl(type, def.skin ?? ''), scene);
+    // A skin saved for an older version of this model won't fit: use the default.
+    const expected = skinUnits(def.model!) * 2;
+    if (getCustomSkin(type) && def.skin) {
+      tex.onLoadObservable.addOnce(() => {
+        if (tex.getSize().width !== expected) tex.updateURL(def.skin!);
+      });
+    }
     t = new BlockTemplate(scene, def.model!, skinMaterial(`skin-${type}`, tex, scene), `tpl-${type}`);
     // Skins shouldn't bloom like the neon parts do.
     const glow = scene.getGlowLayerByName('glow');
@@ -368,7 +383,7 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
   character.root.scaling.setAll(scale);
   let update: Visual['update'];
   if (def.hair && character.joints.head) {
-    const hair = hairTemplate(scene).createInstance(`${name}-hair`);
+    const hair = hairTemplate(scene, def.hair, def.model!).createInstance(`${name}-hair`);
     hair.isPickable = false;
     hair.parent = character.joints.head;
     update = (time, moving) => {

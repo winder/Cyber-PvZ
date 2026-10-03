@@ -3,7 +3,7 @@ import {
   type AbstractMesh, type BaseTexture,
 } from '@babylonjs/core';
 import {
-  MODELS, SKIN_UNITS, faceRects, type FaceName, type ModelId, type PartDef, type PartRole,
+  MODELS, SKIN_UNITS, faceRects, skinUnits, type FaceName, type ModelId, type PartDef, type PartRole,
 } from '../models/models';
 
 /** World size of one skin unit. A humanoid (32 units) is 1.6 tall. */
@@ -20,14 +20,11 @@ const FACE_CORNERS: Record<FaceName, [number, number, number][]> = {
   bottom: [[1, -1, 1], [-1, -1, 1], [-1, -1, -1], [1, -1, -1]],
 };
 
-const FACE_NORMALS: Record<FaceName, [number, number, number]> = {
-  front: [0, 0, 1], back: [0, 0, -1], right: [1, 0, 0], left: [-1, 0, 0], top: [0, 1, 0], bottom: [0, -1, 0],
-};
-
 /** A textured box for one part, centered on its own origin. */
-export function buildPartMesh(name: string, part: PartDef, scene: Scene): Mesh {
+export function buildPartMesh(name: string, part: PartDef, scene: Scene, units = SKIN_UNITS): Mesh {
   const [w, h, d] = part.size;
   const hx = (w / 2) * UNIT, hy = (h / 2) * UNIT, hz = (d / 2) * UNIT;
+  const taper = part.taper ?? 1;
   const rects = faceRects(part);
   const positions: number[] = [];
   const normals: number[] = [];
@@ -39,11 +36,21 @@ export function buildPartMesh(name: string, part: PartDef, scene: Scene): Mesh {
     const base = positions.length / 3;
     const corners = FACE_CORNERS[face];
     const uvCorners = [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]];
+    // Tapered parts pull their top corners in.
+    const pts = corners.map(([sx, sy, sz]) => {
+      const k = sy > 0 ? taper : 1;
+      return [sx * hx * k, sy * hy, sz * hz * k];
+    });
+    // Face normal from its edges (sides of a tapered part lean outward).
+    const [tl, tr, , bl] = pts;
+    const ax = tr[0] - tl[0], ay = tr[1] - tl[1], az = tr[2] - tl[2];
+    const bx = bl[0] - tl[0], by = bl[1] - tl[1], bz = bl[2] - tl[2];
+    const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    const nl = Math.hypot(nx, ny, nz) || 1;
     for (let i = 0; i < 4; i++) {
-      const [sx, sy, sz] = corners[i];
-      positions.push(sx * hx, sy * hy, sz * hz);
-      normals.push(...FACE_NORMALS[face]);
-      uvs.push(uvCorners[i][0] / SKIN_UNITS, 1 - uvCorners[i][1] / SKIN_UNITS);
+      positions.push(...pts[i]);
+      normals.push(nx / nl, ny / nl, nz / nl);
+      uvs.push(uvCorners[i][0] / units, 1 - uvCorners[i][1] / units);
     }
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
@@ -77,8 +84,11 @@ export function loadSkinTexture(url: string, scene: Scene): Texture {
 
 /** A posed, animatable character made of parts. */
 export interface BlockCharacter {
+  model: ModelId;
   root: TransformNode;
   joints: Partial<Record<PartRole, TransformNode>>;
+  /** Resting rotation of each joint; animation moves relative to this. */
+  rest: Partial<Record<PartRole, [number, number, number]>>;
   meshes: AbstractMesh[];
 }
 
@@ -91,7 +101,7 @@ export class BlockTemplate {
 
   constructor(scene: Scene, readonly model: ModelId, material: Material, name: string) {
     this.parts = MODELS[model].parts.map((def) => {
-      const mesh = buildPartMesh(`${name}-${def.role}`, def, scene);
+      const mesh = buildPartMesh(`${name}-${def.role}`, def, scene, skinUnits(model));
       mesh.material = material;
       mesh.isPickable = false;
       mesh.setEnabled(false);
@@ -100,7 +110,7 @@ export class BlockTemplate {
   }
 
   spawn(name: string, scene: Scene): BlockCharacter {
-    return assemble(name, scene, this.parts.map(({ def, mesh }) => {
+    return assemble(name, scene, this.model, this.parts.map(({ def, mesh }) => {
       const inst = mesh.createInstance(`${name}-${def.role}`);
       inst.isPickable = false;
       return { def, mesh: inst };
@@ -109,22 +119,29 @@ export class BlockTemplate {
 }
 
 /** Put part meshes onto joints at their pivots. */
-export function assemble(name: string, scene: Scene, parts: { def: PartDef; mesh: AbstractMesh }[]): BlockCharacter {
+export function assemble(name: string, scene: Scene, model: ModelId, parts: { def: PartDef; mesh: AbstractMesh }[]): BlockCharacter {
   const root = new TransformNode(name, scene);
   const joints: Partial<Record<PartRole, TransformNode>> = {};
+  const rest: Partial<Record<PartRole, [number, number, number]>> = {};
+  const pivots: Partial<Record<PartRole, [number, number, number]>> = {};
   const meshes: AbstractMesh[] = [];
   for (const { def, mesh } of parts) {
     const joint = new TransformNode(`${name}-${def.role}-joint`, scene);
-    joint.parent = root;
-    joint.position.set(def.pivot[0] * UNIT, def.pivot[1] * UNIT, def.pivot[2] * UNIT);
+    // Attached parts hang off their parent's joint; pivots are measured from the feet.
+    const parentJoint = def.parent ? joints[def.parent] : undefined;
+    const base = def.parent ? pivots[def.parent] ?? [0, 0, 0] : [0, 0, 0];
+    joint.parent = parentJoint ?? root;
+    joint.position.set((def.pivot[0] - base[0]) * UNIT, (def.pivot[1] - base[1]) * UNIT, (def.pivot[2] - base[2]) * UNIT);
     if (def.rest) joint.rotation.set(...def.rest);
+    rest[def.role] = def.rest ?? [0, 0, 0];
+    pivots[def.role] = def.pivot;
     mesh.parent = joint;
     mesh.position.set(def.offset[0] * UNIT, def.offset[1] * UNIT, def.offset[2] * UNIT);
     mesh.setEnabled(true);
     joints[def.role] = joint;
     meshes.push(mesh);
   }
-  return { root, joints, meshes };
+  return { model, root, joints, rest, meshes };
 }
 
 export interface PoseState {
@@ -136,27 +153,42 @@ export interface PoseState {
 /** Walk / chew / fly animation. `t` is seconds; `seed` keeps zombies out of step. */
 export function animate(c: BlockCharacter, t: number, s: PoseState, seed = 0): void {
   const j = c.joints;
+  const rest = (role: PartRole) => c.rest[role] ?? [0, 0, 0];
   const phase = t + seed * 0.37;
+  const swing = MODELS[c.model].walkSwing ?? 0.6;
   const walk = s.moving && !s.flying ? Math.sin(phase * 7) : 0;
 
   if (j.legR && j.legL) {
     if (s.flying) {
       const dangle = 0.35 + Math.sin(phase * 3) * 0.12;
-      j.legR.rotation.x = dangle;
-      j.legL.rotation.x = dangle * 0.8;
+      j.legR.rotation.x = rest('legR')[0] + dangle;
+      j.legL.rotation.x = rest('legL')[0] + dangle * 0.8;
     } else {
-      j.legR.rotation.x = walk * 0.6;
-      j.legL.rotation.x = -walk * 0.6;
+      j.legR.rotation.x = rest('legR')[0] + walk * swing;
+      j.legL.rotation.x = rest('legL')[0] - walk * swing;
     }
   }
+  // Big feet stay flat-ish on the ground while the legs swing.
+  if (j.footR && j.legR) j.footR.rotation.x = rest('footR')[0] - (j.legR.rotation.x - rest('legR')[0]) * 0.7;
+  if (j.footL && j.legL) j.footL.rotation.x = rest('footL')[0] - (j.legL.rotation.x - rest('legL')[0]) * 0.7;
+
   if (j.armR && j.armL) {
-    const base = -Math.PI / 2;
     const chew = s.chewing ? Math.sin(phase * 14) * 0.45 : 0;
-    j.armR.rotation.x = base + chew - walk * 0.12;
-    j.armL.rotation.x = base - chew + walk * 0.12;
+    j.armR.rotation.x = rest('armR')[0] + chew - walk * 0.12;
+    j.armL.rotation.x = rest('armL')[0] - chew + walk * 0.12;
   }
   if (j.head) {
     j.head.rotation.x = s.chewing ? Math.sin(phase * 14) * 0.15 : 0;
     j.head.rotation.y = s.moving ? Math.sin(phase * 1.3) * 0.15 : 0;
   }
+  // The little driver: jiggles along, looks around, and works the levers.
+  if (j.driverBody) j.driverBody.rotation.z = s.moving ? Math.sin(phase * 7) * 0.08 : 0;
+  const leverSpeed = s.chewing ? 9 : s.moving ? 3.5 : 1.2;
+  const pull = Math.sin(phase * leverSpeed) * 0.35;
+  if (j.leverR) j.leverR.rotation.x = rest('leverR')[0] + pull;
+  if (j.leverL) j.leverL.rotation.x = rest('leverL')[0] - pull;
+  // Arms follow their lever so the hands stay on the grips.
+  if (j.driverArmR) j.driverArmR.rotation.x = rest('driverArmR')[0] - pull * 0.6;
+  if (j.driverArmL) j.driverArmL.rotation.x = rest('driverArmL')[0] + pull * 0.6;
+  if (j.driverHead) j.driverHead.rotation.y = Math.sin(phase * 0.9) * 0.8 + (s.chewing ? Math.sin(phase * 20) * 0.15 : 0);
 }
