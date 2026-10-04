@@ -326,6 +326,11 @@ export interface MapDef {
   ravines: Rect[];
   /** Where each edge's spawn zone is (range along that edge). */
   edges: Record<EdgeId, { from: number; to: number }>;
+  /**
+   * Optional alley mouths along an edge: zombies from that edge pour out of
+   * one of these (positions along the edge) instead of anywhere in its range.
+   */
+  alleys?: Partial<Record<EdgeId, number[]>>;
 }
 
 /** Level 1: open ground, bases spread out. */
@@ -394,6 +399,11 @@ const RUST_MAP: MapDef = {
     south: { from: 2, to: 28 },
     west: { from: -6, to: 6 },
   },
+  // Gaps between the ruined buildings along each side.
+  alleys: {
+    north: [7, 17, 26],
+    south: [4, 14, 24],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -417,6 +427,10 @@ export interface ThemeDef {
   rockEdge: string;
   border: string;
   glow: number;
+  /** How rocks look: plain boulders, or burnt-out car wrecks. */
+  rocks?: 'boulder' | 'carWreck';
+  /** Extra scenery: ruined skyscrapers, flickering street lamps, tumbleweeds. */
+  decor?: 'ruinedCity';
 }
 
 const NEON_THEME: ThemeDef = {
@@ -452,6 +466,8 @@ const RUST_THEME: ThemeDef = {
   rockEdge: '#c27038',
   border: '#7a3b1a',
   glow: 0.55,
+  rocks: 'carWreck',
+  decor: 'ruinedCity',
 };
 
 // ---------------------------------------------------------------------------

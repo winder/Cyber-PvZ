@@ -222,6 +222,7 @@ export class Renderer {
       }
     }
     this.updatePops(dt);
+    this.world.decor?.update(dt, g.zombies.some((z) => ZOMBIES[z.type].boss));
   }
 
   // --------------------------------------------------------------------------

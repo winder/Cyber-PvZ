@@ -344,8 +344,12 @@ export class Game {
     const range = this.map.edges[edge];
     const hw = this.map.width / 2 - 0.5, hd = this.map.depth / 2 - 0.5;
     let x = 0, z = 0;
+    const alleys = this.map.alleys?.[edge];
     for (let tries = 0; tries < 30; tries++) {
-      const t = range.from + this.rand() * (range.to - range.from);
+      // Out of an alley mouth if the edge has them, otherwise anywhere along it.
+      const t = alleys
+        ? alleys[Math.floor(this.rand() * alleys.length)] + (this.rand() - 0.5) * 2
+        : range.from + this.rand() * (range.to - range.from);
       if (edge === 'east') { x = hw; z = t; }
       else if (edge === 'west') { x = -hw; z = t; }
       else if (edge === 'north') { x = t; z = hd; }

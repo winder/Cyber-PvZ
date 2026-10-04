@@ -3,6 +3,7 @@ import {
   Scene, StandardMaterial, Vector3, VertexBuffer, VertexData,
 } from '@babylonjs/core';
 import { type EdgeId, type LevelDef } from '../data/config';
+import { buildCarWreck, createRuinedCity, type Decor } from './decor';
 import { RAVINE_DEPTH, Terrain } from './terrain';
 import { Materials } from './visuals';
 
@@ -13,6 +14,8 @@ export interface World {
   glow: GlowLayer;
   edgeMarkers: Record<EdgeId, Mesh>;
   terrain: Terrain;
+  /** Animated scenery (lamps, tumbleweeds), if the level has any. */
+  decor?: Decor;
 }
 
 export function createWorld(engine: Engine, level: LevelDef): World {
@@ -95,6 +98,13 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   border.color = hex(theme.border);
 
   for (const [i, r] of map.rocks.entries()) {
+    if (theme.rocks === 'carWreck') {
+      // Burnt-out car husks instead of boulders, sat a little into the dirt.
+      const car = buildCarWreck(scene, `wreck${i}`, r.r, 100 + i);
+      car.position.set(r.x, terrain.surfaceHeight(r.x, r.z) - 0.1, r.z);
+      car.rotation.set((i % 2 ? 0.05 : -0.04), i * 2.1 + 0.6, (i % 3 ? 0.06 : -0.08));
+      continue;
+    }
     const rock = MeshBuilder.CreatePolyhedron(`rock${i}`, { type: (i % 3) + 1, size: r.r * 0.8 }, scene);
     rock.position.set(r.x, terrain.surfaceHeight(r.x, r.z) + r.r * 0.35, r.z);
     rock.scaling.y = 0.75;
@@ -127,5 +137,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     edgeMarkers[edge] = strip;
   }
 
-  return { scene, mats, ground, glow, edgeMarkers, terrain };
+  const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, top) : undefined;
+
+  return { scene, mats, ground, glow, edgeMarkers, terrain, decor };
 }

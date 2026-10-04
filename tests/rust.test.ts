@@ -24,6 +24,17 @@ describe('Rust Corridor', () => {
     expect(new Set(zs).size).toBe(1);
   });
 
+  it('side zombies pour out of the alleys between the ruined buildings', () => {
+    for (const edge of ['north', 'south'] as const) {
+      const alleys = RUST.map.alleys![edge]!;
+      const g = new Game(7, RUST);
+      for (let i = 0; i < 20; i++) {
+        const z = g.spawn('cyborg', edge);
+        expect(alleys.some((a) => Math.abs(z.x - a) <= 1)).toBe(true);
+      }
+    }
+  });
+
   it('north zombies come in through the north gap or round the east end', () => {
     for (let seed = 1; seed <= 12; seed++) {
       const x = entryPoint('north', seed);
