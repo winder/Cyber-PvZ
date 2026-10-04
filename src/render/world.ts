@@ -2,7 +2,6 @@ import {
   Color3, Color4, DirectionalLight, Engine, GlowLayer, HemisphericLight, Mesh, MeshBuilder,
   Scene, StandardMaterial, Vector3, VertexBuffer, VertexData,
 } from '@babylonjs/core';
-import { GridMaterial } from '@babylonjs/materials/grid/gridMaterial';
 import { MAP, type EdgeId } from '../data/config';
 import { RAVINE_DEPTH, surfaceHeight, terrainHeight } from './terrain';
 import { Materials } from './visuals';
@@ -67,22 +66,6 @@ export function createWorld(engine: Engine): World {
   earth.emissiveColor = new Color3(0.01, 0.015, 0.035);
   ground.material = earth;
   ground.isPickable = false;
-
-  // Neon grid laid over the same surface (lines only). On slopes and cliff
-  // faces its height lines stack up like contours.
-  const grid = new GridMaterial('grid', scene);
-  grid.mainColor = new Color3(0, 0, 0.02);
-  grid.lineColor = new Color3(0.1, 0.5, 0.7);
-  grid.gridRatio = 1;
-  grid.majorUnitFrequency = 6;
-  grid.minorUnitVisibility = 0.25;
-  // Draw only the lines, so the shaded ground shows through the gaps.
-  grid.linesOnly = true;
-  grid.opacity = 0.99;
-  grid.zOffset = -2;
-  const gridLayer = ground.clone('groundGrid');
-  gridLayer.material = grid;
-  gridLayer.isPickable = false;
 
   const hw = MAP.width / 2, hd = MAP.depth / 2;
   /** Points along a straight line on the ground, following the hills. */
