@@ -47,6 +47,8 @@ export interface ModelDef {
   skinUnits?: number;
   /** How far the legs swing when walking (radians). */
   walkSwing?: number;
+  /** How it moves: an ordinary walk, or leaping bounds with a slice on landing. */
+  gait?: 'walk' | 'leapSlice';
 }
 
 /** Default skin layout size in units. */
@@ -84,6 +86,7 @@ export const MODELS: Record<ModelId, ModelDef> = {
   // hand, left arm across the body. Same skin layout as the humanoid.
   guardian: {
     label: 'Guardian',
+    gait: 'leapSlice',
     parts: HUMANOID_PARTS.map((p) =>
       p.role === 'armR' ? { ...p, rest: [-0.5, 0, 0.15] as [number, number, number] }
       : p.role === 'armL' ? { ...p, rest: [-1.1, 0, 0.6] as [number, number, number] }

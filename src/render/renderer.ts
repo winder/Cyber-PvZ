@@ -3,7 +3,7 @@ import {
 } from '@babylonjs/core';
 import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
-import { animate } from './blockModel';
+import { animate, UNIT } from './blockModel';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
 } from './visuals';
@@ -163,6 +163,8 @@ export class Renderer {
         t = { visual, bar: this.makeBar(visual, 0.9), x: z.x, z: z.z };
         this.zombies.set(z.id, t);
       }
+      // Actually going somewhere? (Escorts sometimes stand still at their post.)
+      const moving = Math.hypot(z.x - t.x, z.z - t.z) > 0.03;
       t.x += (z.x - t.x) * ease;
       t.z += (z.z - t.z) * ease;
       const root = t.visual.root;
@@ -185,11 +187,11 @@ export class Renderer {
       root.rotation.y = yaw(z.facing);
       const character = t.visual.character;
       if (character) {
-        animate(character, this.time, { moving: !chewing, chewing, flying: def.flying }, z.id);
-        t.visual.update?.(this.time, !chewing);
+        const lift = animate(character, this.time, { moving: moving && !chewing, chewing, flying: def.flying }, z.id);
+        t.visual.update?.(this.time, moving && !chewing);
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
-        if (!def.flying) root.position.y = ground;
+        if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
       } else {
         root.rotation.x = chewing ? 0.25 : 0;
       }

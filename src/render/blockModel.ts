@@ -150,10 +150,75 @@ export interface PoseState {
   flying: boolean;
 }
 
-/** Walk / chew / fly animation. `t` is seconds; `seed` keeps zombies out of step. */
-export function animate(c: BlockCharacter, t: number, s: PoseState, seed = 0): void {
+/**
+ * Walk / chew / fly animation. `t` is seconds; `seed` keeps zombies out of step.
+ * Returns how far to lift the whole body (in skin units, before scaling), for
+ * gaits that leave the ground.
+ */
+export function animate(c: BlockCharacter, t: number, s: PoseState, seed = 0): number {
+  if (MODELS[c.model].gait === 'leapSlice' && !s.flying) return leapSlice(c, t, s, seed);
+  walkCycle(c, t, s, seed);
+  return 0;
+}
+
+const LEAP_SECONDS = 0.9;
+const SLASH_SECONDS = 0.55;
+
+/**
+ * Bounding leaps: crouch, spring up with legs tucked and the weapon raised
+ * overhead, then land with a fast slice and lean into it. Attacking repeats
+ * the slice on the spot, quicker and without leaving the ground.
+ */
+function leapSlice(c: BlockCharacter, t: number, s: PoseState, seed: number): number {
   const j = c.joints;
   const rest = (role: PartRole) => c.rest[role] ?? [0, 0, 0];
+  const leaping = s.moving && !s.chewing;
+  if (!leaping && !s.chewing) {
+    walkCycle(c, t, s, seed);
+    return 0;
+  }
+  const period = leaping ? LEAP_SECONDS : SLASH_SECONDS;
+  const k = (((t + seed * 0.37) / period) % 1 + 1) % 1; // 0 → 1 through one leap
+
+  // Phases: crouch (0–0.12), airborne (0.12–0.62), slice on landing (0.62–0.8), recover.
+  const air = k > 0.12 && k < 0.62 ? Math.sin(((k - 0.12) / 0.5) * Math.PI) : 0;
+  const crouch = k < 0.12 ? Math.sin((k / 0.12) * Math.PI) : k > 0.62 && k < 0.8 ? Math.sin(((k - 0.62) / 0.18) * Math.PI) * 0.6 : 0;
+
+  // Weapon arm: wind up overhead in the air, then a fast slice down and across.
+  let swing: number;
+  if (k < 0.12) swing = 0;
+  else if (k < 0.62) swing = -2.3 * Math.min(1, (k - 0.12) / 0.3); // raise overhead
+  else if (k < 0.72) swing = -2.3 + 3.0 * ((k - 0.62) / 0.1); // SLICE
+  else swing = 0.7 * (1 - (k - 0.72) / 0.28); // follow-through, back to rest
+  if (j.armR) {
+    j.armR.rotation.x = rest('armR')[0] + swing;
+    j.armR.rotation.z = rest('armR')[2] + (k > 0.62 && k < 0.8 ? -0.5 : 0); // across the body
+  }
+  if (j.armL) j.armL.rotation.x = rest('armL')[0] - air * 0.6;
+
+  // Legs tuck up in the air, bend on landing.
+  const tuck = air * (leaping ? 0.9 : 0);
+  if (j.legR) j.legR.rotation.x = rest('legR')[0] - tuck - crouch * 0.4;
+  if (j.legL) j.legL.rotation.x = rest('legL')[0] - tuck * 0.7 + crouch * 0.3;
+
+  // Lean into the slice; head follows.
+  const lean = k > 0.62 && k < 0.85 ? Math.sin(((k - 0.62) / 0.23) * Math.PI) * 0.35 : 0;
+  if (j.body) j.body.rotation.x = rest('body')[0] + lean - air * 0.1;
+  if (j.head) {
+    j.head.rotation.x = lean * 0.6;
+    j.head.rotation.y = 0;
+  }
+
+  // Lift (skin units): a high arc in the air, a dip when crouching.
+  return leaping ? air * 14 - crouch * 1.5 : -crouch * 1.2;
+}
+
+function walkCycle(c: BlockCharacter, t: number, s: PoseState, seed: number): void {
+  const j = c.joints;
+  const rest = (role: PartRole) => c.rest[role] ?? [0, 0, 0];
+  // Undo anything another gait bent out of shape.
+  if (j.body) j.body.rotation.x = rest('body')[0];
+  if (j.armR) j.armR.rotation.z = rest('armR')[2];
   const phase = t + seed * 0.37;
   const swing = MODELS[c.model].walkSwing ?? 0.6;
   const walk = s.moving && !s.flying ? Math.sin(phase * 7) : 0;

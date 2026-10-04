@@ -155,7 +155,9 @@ Cost sun, have a cooldown, require the Spaceship to be standing.
 - A small nest of glossy, smooth 3D curls rings the driver, deliberately unlike
   the blocky style of everything else.
 - Arrives with **3 Guardians** (from Wesley's drawing): double-size zombies
-  with a blue Y on the face and glowing blue scythes. They march in formation
+  with a blue Y on the face and glowing blue scythes. They move in leaping
+  bounds, raising the scythe overhead and slicing as they land. They keep
+  formation
   beside and behind him, slash every plant in reach, and attack bases they
   reach. If he falls, they carry on alone toward the nearest base.
 - Walks in a straight line over rocks and ravines. Stomps every plant near him
