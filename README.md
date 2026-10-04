@@ -68,6 +68,14 @@ that plant, zombie, or building in `config.ts`.
 **Your own sounds:** put a sound in `public/sounds/` and add it to
 `SOUND_FILES` in `config.ts`, e.g. `laser: 'sounds/pew.mp3'`.
 
+## Design docs and tickets
+
+- [PRD.md](PRD.md): what the game is.
+- [CONTEXT.md](CONTEXT.md): the game's vocabulary (bases, waves, walls, ravines, guardians…).
+- [docs/adr/](docs/adr/): architecture decisions and why.
+- Tickets live in [beads](https://github.com/gastownhall/beads): `bd list --all`
+  (a readable export is in `.beads/issues.jsonl`).
+
 ## For developers
 
 - `src/sim/` — game rules, no graphics. Fixed 30 ticks/second.
