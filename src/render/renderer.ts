@@ -4,7 +4,6 @@ import {
 import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
 import { animate } from './blockModel';
-import { surfaceHeight, terrainHeight } from './terrain';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
 } from './visuals';
@@ -94,7 +93,7 @@ export class Renderer {
     this.structures = [];
     for (const s of this.game.structures) {
       const visual = createStructureVisual(this.world.scene, this.world.mats, s.type, `structure${s.index}`);
-      visual.root.position.set(s.x, terrainHeight(s.x, s.z), s.z);
+      visual.root.position.set(s.x, this.world.terrain.terrainHeight(s.x, s.z), s.z);
       if (s.type === 'spaceship') visual.root.rotation.y = Math.PI / 2;
       this.structures.push({ visual, bar: this.makeBar(visual, 2.5), x: s.x, z: s.z });
     }
@@ -134,7 +133,7 @@ export class Renderer {
       let t = this.plants.get(p.id);
       if (!t) {
         const visual = createPlantVisual(scene, mats, p.type, `plant${p.id}`);
-        visual.root.position.set(p.x, terrainHeight(p.x, p.z), p.z);
+        visual.root.position.set(p.x, this.world.terrain.terrainHeight(p.x, p.z), p.z);
         t = { visual, bar: this.makeBar(visual, 1), x: p.x, z: p.z };
         this.plants.set(p.id, t);
         this.pop(visual.root);
@@ -171,11 +170,11 @@ export class Renderer {
       if (def.giant || def.flying) {
         // Flyers and giants pass over ravines (as if they weren't there) and
         // ease up and down over the hills instead of snapping.
-        const target = surfaceHeight(t.x, t.z);
+        const target = this.world.terrain.surfaceHeight(t.x, t.z);
         t.groundY = t.groundY === undefined ? target : t.groundY + (target - t.groundY) * Math.min(1, dt * 3);
         ground = t.groundY;
       } else {
-        ground = terrainHeight(t.x, t.z);
+        ground = this.world.terrain.terrainHeight(t.x, t.z);
       }
       const bob = def.flying
         ? FLY_HEIGHT + Math.sin(this.time * 4 + z.id) * 0.2
@@ -235,15 +234,15 @@ export class Renderer {
             // A big one deserves a big finish.
             for (let i = 0; i < 6; i++) {
               const a = (i / 6) * Math.PI * 2;
-              this.burst(e.x + Math.cos(a) * 1.5, e.z + Math.sin(a) * 1.5, i % 2 ? def.color : '#ffcc66', surfaceHeight(e.x, e.z) + 1 + i);
+              this.burst(e.x + Math.cos(a) * 1.5, e.z + Math.sin(a) * 1.5, i % 2 ? def.color : '#ffcc66', this.world.terrain.surfaceHeight(e.x, e.z) + 1 + i);
             }
             this.strikeBlast(e.x, e.z, 4);
           } else {
-            this.burst(e.x, e.z, def.color, def.flying ? surfaceHeight(e.x, e.z) + FLY_HEIGHT : terrainHeight(e.x, e.z) + 0.6);
+            this.burst(e.x, e.z, def.color, def.flying ? this.world.terrain.surfaceHeight(e.x, e.z) + FLY_HEIGHT : this.world.terrain.terrainHeight(e.x, e.z) + 0.6);
           }
           break;
         }
-        case 'plantDied': this.burst(e.x, e.z, '#3cff6e', terrainHeight(e.x, e.z) + 0.6); break;
+        case 'plantDied': this.burst(e.x, e.z, '#3cff6e', this.world.terrain.terrainHeight(e.x, e.z) + 0.6); break;
         case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay); break;
         case 'strikeHit': this.strikeBlast(e.x, e.z, e.radius); break;
         case 'structureDestroyed': this.destroyStructure(e.index); break;
@@ -265,8 +264,8 @@ export class Renderer {
   }
 
   private beam(fx: number, fz: number, tx: number, tz: number, toAir: boolean, color: string): void {
-    const from = new Vector3(fx, terrainHeight(fx, fz) + 1.05, fz);
-    const to = new Vector3(tx, toAir ? surfaceHeight(tx, tz) + FLY_HEIGHT + 0.8 : terrainHeight(tx, tz) + 0.9, tz);
+    const from = new Vector3(fx, this.world.terrain.terrainHeight(fx, fz) + 1.05, fz);
+    const to = new Vector3(tx, toAir ? this.world.terrain.surfaceHeight(tx, tz) + FLY_HEIGHT + 0.8 : this.world.terrain.terrainHeight(tx, tz) + 0.9, tz);
     const len = Vector3.Distance(from, to);
     const mesh = MeshBuilder.CreateCylinder('beam', { height: len, diameter: 0.09, tessellation: 6 }, this.world.scene);
     mesh.material = this.beamMat(color);
@@ -309,7 +308,7 @@ export class Renderer {
     const r = ABILITIES.orbitalStrike.radius;
     const ring = MeshBuilder.CreateTorus('strikeRing', { diameter: r * 2, thickness: 0.15, tessellation: 48 }, this.world.scene);
     ring.material = this.world.mats.neon('#ff3355', 1.5);
-    const h = surfaceHeight(x, z);
+    const h = this.world.terrain.surfaceHeight(x, z);
     ring.position.set(x, h + 0.15, z);
     ring.isPickable = false;
     const beam = MeshBuilder.CreateCylinder('strikeBeam', { height: 40, diameter: 0.15, tessellation: 8 }, this.world.scene);
@@ -332,7 +331,7 @@ export class Renderer {
     const { scene, mats } = this.world;
     const column = MeshBuilder.CreateCylinder('blastCol', { height: 30, diameter: radius * 1.2, tessellation: 24 }, scene);
     column.material = mats.neon('#ff4466', 2, 0.7);
-    const h = surfaceHeight(x, z);
+    const h = this.world.terrain.surfaceHeight(x, z);
     column.position.set(x, h + 15, z);
     column.isPickable = false;
     const dome = MeshBuilder.CreateSphere('blastDome', { diameter: radius * 2, segments: 16 }, scene);
@@ -356,7 +355,7 @@ export class Renderer {
   private destroyStructure(index: number): void {
     const t = this.structures[index];
     const s = this.game.structures[index];
-    const h = terrainHeight(s.x, s.z);
+    const h = this.world.terrain.terrainHeight(s.x, s.z);
     this.burst(s.x, s.z, STRUCTURES[s.type].color, h + 1.5);
     this.burst(s.x + 1, s.z - 0.5, '#ffaa33', h + 1);
     const root = t.visual.root;
@@ -409,7 +408,7 @@ export class Renderer {
       this.ghostRing.setEnabled(false);
       return;
     }
-    const h = terrainHeight(x, z);
+    const h = this.world.terrain.terrainHeight(x, z);
     this.ghost.position.set(x, h, z);
     const range = PLANTS[type].attack?.range ?? PLANTS[type].radius + 0.3;
     this.ghostRing.setEnabled(true);
@@ -421,12 +420,12 @@ export class Renderer {
   setSelected(plantId: number | null): void {
     const p = plantId === null ? undefined : this.game.plants.find((pl) => pl.id === plantId);
     this.selectRing.setEnabled(!!p);
-    if (p) this.selectRing.position.set(p.x, terrainHeight(p.x, p.z) + 0.1, p.z);
+    if (p) this.selectRing.position.set(p.x, this.world.terrain.terrainHeight(p.x, p.z) + 0.1, p.z);
   }
 
   setAim(on: boolean, x = 0, z = 0): void {
     this.aimRing.setEnabled(on);
-    if (on) this.aimRing.position.set(x, surfaceHeight(x, z) + 0.15, z);
+    if (on) this.aimRing.position.set(x, this.world.terrain.surfaceHeight(x, z) + 0.15, z);
   }
 
   showEdges(edges: EdgeId[]): void {

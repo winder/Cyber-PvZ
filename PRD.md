@@ -49,9 +49,22 @@ Co-designed by Wesley.
 - Each cleared wave grants bonus sun.
 - Selling a plant refunds its full cost (build phase only).
 
-## Map
+## Levels
 
-- One hand-made map, roughly 3–4 screens wide, on 3D rolling hills (the
+Pick a level on the title screen (or add `?level=2` / `?level=rust` to the
+address). Each level has its own map, color theme, and waves.
+
+1. **Neon Grid**: open hills at night, bases spread out (the map below).
+2. **Rust Corridor**: a bright, dusty, dystopian canyon in ochre and rust under
+   an orange haze. A long corridor with the Spaceship, Power Plant and
+   Greenhouse in a row down the middle, so zombies hit them in order. Long
+   ravines wall off both sides; zombies from the sides can only get in
+   through a gap (north: just east of the Spaceship; south: between the
+   Spaceship and the Power Plant) or round the far east ends.
+
+## Map (Neon Grid)
+
+- A hand-made map, roughly 3–4 screens wide, on 3D rolling hills (the
   hills are looks only; the rules are the same as flat ground). Bases sit on
   level pads.
 - Rocks and ravines (sheer trenches cut straight down into the ground) block

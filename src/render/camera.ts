@@ -1,6 +1,5 @@
 import { ArcRotateCamera, Matrix, Scene, Vector3 } from '@babylonjs/core';
-import { MAP } from '../data/config';
-import { rayToTerrain, surfaceHeight } from './terrain';
+import type { Terrain } from './terrain';
 
 const NORTH = -Math.PI / 2;
 const TILT = 0.9; // radians from straight down
@@ -43,7 +42,12 @@ export class RtsCamera {
   private keys = new Set<string>();
   private snapTarget: number | null = null;
 
-  constructor(private scene: Scene, private canvas: HTMLCanvasElement, private cb: CameraCallbacks) {
+  constructor(
+    private scene: Scene,
+    private canvas: HTMLCanvasElement,
+    private cb: CameraCallbacks,
+    private terrain: Terrain,
+  ) {
     this.camera = new ArcRotateCamera('cam', NORTH, TILT, 26, new Vector3(-8, 0, 0), scene);
     this.camera.inputs.clear();
     this.camera.minZ = 0.5;
@@ -95,13 +99,13 @@ export class RtsCamera {
   groundPoint(px: number, py: number): { x: number; z: number } | null {
     const ray = this.scene.createPickingRay(px, py, Matrix.Identity(), this.camera);
     const o = ray.origin, d = ray.direction;
-    return rayToTerrain(o.x, o.y, o.z, d.x, d.y, d.z);
+    return this.terrain.rayToTerrain(o.x, o.y, o.z, d.x, d.y, d.z);
   }
 
   update(dt: number): void {
     // Ride up and down over the hills (but not down into ravines).
     const t = this.camera.target;
-    const groundY = Math.max(0, surfaceHeight(t.x, t.z));
+    const groundY = Math.max(0, this.terrain.surfaceHeight(t.x, t.z));
     t.y += (groundY - t.y) * Math.min(1, dt * 4);
 
     // Keyboard panning.
@@ -158,8 +162,9 @@ export class RtsCamera {
 
   private clampTarget(): void {
     const t = this.camera.target;
-    t.x = Math.max(-MAP.width / 2, Math.min(MAP.width / 2, t.x));
-    t.z = Math.max(-MAP.depth / 2, Math.min(MAP.depth / 2, t.z));
+    const { width, depth } = this.terrain.map;
+    t.x = Math.max(-width / 2, Math.min(width / 2, t.x));
+    t.z = Math.max(-depth / 2, Math.min(depth / 2, t.z));
   }
 
   private local(e: PointerEvent | WheelEvent): { x: number; y: number } {

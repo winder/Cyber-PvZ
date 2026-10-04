@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ABILITIES, ECONOMY, PLANTS, WAVES } from '../src/data/config';
+import { ABILITIES, ECONOMY, LEVELS, PLANTS } from '../src/data/config';
 import { Game, TICK_RATE } from '../src/sim/game';
 import { NavGrid } from '../src/sim/nav';
 
@@ -183,6 +183,6 @@ describe('Game', () => {
   });
 
   it('has five waves', () => {
-    expect(WAVES).toHaveLength(5);
+    for (const level of LEVELS) expect(level.waves).toHaveLength(5);
   });
 });

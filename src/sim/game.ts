@@ -1,6 +1,6 @@
 import {
-  ABILITIES, ECONOMY, MAP, PLANTS, STRUCTURES, WAVES, ZOMBIES,
-  type AbilityId, type EdgeId, type PlantId, type SpawnGroup, type StructureId, type ZombieId,
+  ABILITIES, ECONOMY, LEVELS, PLANTS, STRUCTURES, ZOMBIES,
+  type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
 import { CELL, NavGrid } from './nav';
 
@@ -101,7 +101,9 @@ export class Game {
   phase: Phase = 'build';
   /** Index of the wave being fought, or the next one during build. */
   wave = 0;
-  readonly totalWaves = WAVES.length;
+  readonly totalWaves: number;
+  readonly map: MapDef;
+  readonly waves: SpawnGroup[][];
   sun = ECONOMY.startingSun;
   readonly plants: Plant[] = [];
   readonly zombies: Zombie[] = [];
@@ -122,12 +124,15 @@ export class Game {
   private structureHitTimer: number[];
   private readonly rand: () => number;
 
-  constructor(seed = 1) {
+  constructor(seed = 1, readonly level: LevelDef = LEVELS[0]) {
+    this.map = level.map;
+    this.waves = level.waves;
+    this.totalWaves = level.waves.length;
     this.rand = mulberry32(seed);
-    this.nav = new NavGrid(MAP.width, MAP.depth);
-    for (const r of MAP.rocks) this.nav.addRock(r);
-    for (const c of MAP.ravines) this.nav.addRavine(c);
-    this.structures = MAP.structures.map((s, index) => ({
+    this.nav = new NavGrid(this.map.width, this.map.depth);
+    for (const r of this.map.rocks) this.nav.addRock(r);
+    for (const c of this.map.ravines) this.nav.addRavine(c);
+    this.structures = this.map.structures.map((s, index) => ({
       index, type: s.id, x: s.x, z: s.z, hp: STRUCTURES[s.id].hp, alive: true,
     }));
     this.structureHitTimer = this.structures.map(() => 0);
@@ -143,7 +148,7 @@ export class Game {
     const def = PLANTS[type];
     if (this.sun < def.cost) return { ok: false, reason: 'Not enough sun.' };
     const r = def.radius;
-    if (Math.abs(x) > MAP.width / 2 - r || Math.abs(z) > MAP.depth / 2 - r) {
+    if (Math.abs(x) > this.map.width / 2 - r || Math.abs(z) > this.map.depth / 2 - r) {
       return { ok: false, reason: 'Too close to the edge.' };
     }
     let onRock = false;
@@ -205,7 +210,7 @@ export class Game {
     if (this.phase !== 'build') return false;
     this.phase = 'battle';
     this.waveTime = 0;
-    this.spawnQueue = buildSpawnQueue(WAVES[this.wave]);
+    this.spawnQueue = buildSpawnQueue(this.waves[this.wave]);
     this.events.push({ t: 'waveStart', wave: this.wave });
     return true;
   }
@@ -239,7 +244,7 @@ export class Game {
   }
 
   wavePreview(): WavePreviewLine[] {
-    const groups = WAVES[this.wave] ?? [];
+    const groups = this.waves[this.wave] ?? [];
     const lines: WavePreviewLine[] = [];
     for (const g of groups) {
       const line = lines.find((l) => l.edge === g.edge && l.zombie === g.zombie);
@@ -295,8 +300,8 @@ export class Game {
   }
 
   spawn(type: ZombieId, edge: EdgeId): Zombie {
-    const range = MAP.edges[edge];
-    const hw = MAP.width / 2 - 0.5, hd = MAP.depth / 2 - 0.5;
+    const range = this.map.edges[edge];
+    const hw = this.map.width / 2 - 0.5, hd = this.map.depth / 2 - 0.5;
     let x = 0, z = 0;
     for (let tries = 0; tries < 30; tries++) {
       const t = range.from + this.rand() * (range.to - range.from);
@@ -620,7 +625,7 @@ export class Game {
     const x = zb.x + dx, z = zb.z + dz;
     const cell = this.nav.cellOf(x, z);
     if (this.nav.blocked[cell] || this.nav.plantAt[cell] >= 0) return;
-    if (Math.abs(x) > MAP.width / 2 || Math.abs(z) > MAP.depth / 2) return;
+    if (Math.abs(x) > this.map.width / 2 || Math.abs(z) > this.map.depth / 2) return;
     zb.x = x;
     zb.z = z;
   }

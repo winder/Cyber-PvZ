@@ -15,6 +15,12 @@ npm run dev
 Open the address Vite prints. To play on a tablet on the same Wi-Fi, open the
 **Network** address it prints (like `http://192.168.x.x:5173`).
 
+## Levels
+
+Choose a level on the title screen, or link straight to one:
+`?level=1` (Neon Grid) or `?level=2` (Rust Corridor). It combines with debug
+mode, e.g. `?level=2&debug`.
+
 ## Controls
 
 | | Tablet | Computer |
@@ -40,7 +46,8 @@ or `http://localhost:5173/?debug` locally). A 🐞 panel appears with:
 ## Change the game
 
 Everything you'd want to tweak is in **`src/data/config.ts`**: plant costs,
-health, damage, zombie speed, the waves, the map, and the sun economy. Change a
+health, damage, zombie speed, the waves, the levels (maps and color themes),
+and the sun economy. Change a
 number, save, and the game reloads.
 
 **Paint the zombies:** open the **Character Editor** (`/editor/` on the game's

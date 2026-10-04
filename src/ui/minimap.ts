@@ -1,4 +1,4 @@
-import { MAP, PLANTS, STRUCTURES, ZOMBIES } from '../data/config';
+import { PLANTS, STRUCTURES, ZOMBIES } from '../data/config';
 import type { Game } from '../sim/game';
 
 /** StarCraft-style overview in the corner. Tap or drag on it to move the camera. */
@@ -12,11 +12,15 @@ export class Minimap {
     onJump: (x: number, z: number) => void,
   ) {
     this.ctx = canvas.getContext('2d')!;
+    // Same shape as the map (the corridor level is long and thin).
+    canvas.style.aspectRatio = `${game.map.width} / ${game.map.depth}`;
+    canvas.style.height = 'auto';
     let down = false;
+    const map = game.map;
     const jump = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
-      const x = ((e.clientX - r.left) / r.width - 0.5) * MAP.width;
-      const z = (0.5 - (e.clientY - r.top) / r.height) * MAP.depth;
+      const x = ((e.clientX - r.left) / r.width - 0.5) * map.width;
+      const z = (0.5 - (e.clientY - r.top) / r.height) * map.depth;
       onJump(x, z);
     };
     canvas.addEventListener('pointerdown', (e) => {
@@ -38,15 +42,16 @@ export class Minimap {
       c.height = h;
     }
     const ctx = this.ctx;
-    this.scale = w / MAP.width;
+    const map = this.game.map;
+    this.scale = w / map.width;
     const s = this.scale;
-    const X = (x: number) => (x + MAP.width / 2) * s;
-    const Z = (z: number) => (MAP.depth / 2 - z) * s;
+    const X = (x: number) => (x + map.width / 2) * s;
+    const Z = (z: number) => (map.depth / 2 - z) * s;
 
     ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = 'rgba(120, 100, 255, 0.55)';
-    for (const r of MAP.rocks) {
+    for (const r of map.rocks) {
       ctx.beginPath();
       ctx.arc(X(r.x), Z(r.z), r.r * s, 0, Math.PI * 2);
       ctx.fill();
@@ -55,7 +60,7 @@ export class Minimap {
     ctx.fillStyle = '#000003';
     ctx.strokeStyle = 'rgba(90, 240, 255, 0.9)';
     ctx.lineWidth = dpr;
-    for (const r of MAP.ravines) {
+    for (const r of map.ravines) {
       ctx.fillRect(X(r.x - r.w / 2), Z(r.z + r.d / 2), r.w * s, r.d * s);
       ctx.strokeRect(X(r.x - r.w / 2), Z(r.z + r.d / 2), r.w * s, r.d * s);
     }

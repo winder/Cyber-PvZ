@@ -1,6 +1,8 @@
 import { Engine } from '@babylonjs/core';
 import { Audio } from './audio';
-import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type PlantId } from './data/config';
+import {
+  ABILITIES, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId,
+} from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { RtsCamera } from './render/camera';
 import { Renderer } from './render/renderer';
@@ -25,8 +27,16 @@ const ui = {
   started: false,
 };
 
-const game = new Game(Date.now() & 0xffff);
-const world = createWorld(engine);
+/** Which level: ?level=rust (by id) or ?level=2 (by number). Defaults to the first. */
+function pickLevel(): LevelDef {
+  const want = new URLSearchParams(location.search).get('level');
+  if (!want) return LEVELS[0];
+  return LEVELS.find((l) => l.id === want) ?? LEVELS[Number(want) - 1] ?? LEVELS[0];
+}
+const level = pickLevel();
+
+const game = new Game(Date.now() & 0xffff, level);
+const world = createWorld(engine, level);
 const renderer = new Renderer(world, game);
 const camera = makeCamera();
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, game, (x, z) => camera.lookAt(x, z));
@@ -84,7 +94,7 @@ function makeCamera(): RtsCamera {
       renderer.setGhost(null);
       if (ui.aiming) renderer.setAim(false);
     },
-  });
+  }, world.terrain);
 }
 
 function makeHud(): Hud {
@@ -355,12 +365,25 @@ if (skipTitle) {
   hud.hideOverlay();
 } else hud.showOverlay(
   'Cyber Plants vs Zombies',
-  `Futuristic zombies are coming for the <b>Mega-Brain Greenhouse</b>!<br>
+  `${levelPicker()}
+   Futuristic zombies are coming for the <b>Mega-Brain Greenhouse</b>!<br>
    Plant your defense, then press <b>GO</b>. Survive ${game.totalWaves} waves.<br>
    <small>Drag to move · pinch or scroll to zoom · twist or right-drag to turn</small><br>
    <a class="editor-link" href="editor/">🎨 Paint your zombies in the Character Editor</a>`,
   'Play',
 );
+
+/** Level buttons for the title screen. Each is a link, keeping other options like ?debug. */
+function levelPicker(): string {
+  const buttons = LEVELS.map((l, i) => {
+    const params = new URLSearchParams(location.search);
+    params.set('level', l.id);
+    const on = l === level ? ' on' : '';
+    return `<a class="level${on}" href="?${params}"><span class="level-icon">${l.icon}</span>` +
+      `<b>${i + 1}. ${l.name}</b><small>${l.description}</small></a>`;
+  }).join('');
+  return `<div class="levels">${buttons}</div>`;
+}
 
 // Handy for debugging in the browser console.
 Object.assign(window, { game, camera, renderer, ABILITIES });

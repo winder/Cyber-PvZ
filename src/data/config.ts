@@ -296,20 +296,35 @@ export const ECONOMY = {
 };
 
 // ---------------------------------------------------------------------------
-//  MAP
-//  The map is centered on (0, 0). x runs west→east, z runs south→north.
+//  MAPS
+//  Each map is centered on (0, 0). x runs west→east, z runs south→north.
 // ---------------------------------------------------------------------------
 
 export interface Rect { x: number; z: number; w: number; d: number }
 export interface Circle { x: number; z: number; r: number }
 
-export const MAP = {
+export interface MapDef {
+  width: number;
+  depth: number;
+  /** How tall the rolling hills are (1 = normal, 0 = flat). */
+  hills: number;
+  structures: { id: StructureId; x: number; z: number }[];
+  rocks: Circle[];
+  /** Sheer-sided trenches cut into the ground. Nothing can cross them (except giants). */
+  ravines: Rect[];
+  /** Where each edge's spawn zone is (range along that edge). */
+  edges: Record<EdgeId, { from: number; to: number }>;
+}
+
+/** Level 1: open ground, bases spread out. */
+const NEON_MAP: MapDef = {
   width: 72,
   depth: 48,
+  hills: 1,
   structures: [
-    { id: 'greenhouse' as StructureId, x: -26, z: 0 },
-    { id: 'powerPlant' as StructureId, x: -20, z: 13 },
-    { id: 'spaceship' as StructureId, x: -20, z: -13 },
+    { id: 'greenhouse', x: -26, z: 0 },
+    { id: 'powerPlant', x: -20, z: 13 },
+    { id: 'spaceship', x: -20, z: -13 },
   ],
   rocks: [
     { x: 4, z: 6, r: 2.2 },
@@ -319,20 +334,112 @@ export const MAP = {
     { x: -8, z: 16, r: 1.8 },
     { x: 22, z: -16, r: 2.2 },
     { x: -12, z: -18, r: 1.5 },
-  ] as Circle[],
-  /** Sheer-sided trenches cut into the ground. Nothing can cross them (except giants). */
+  ],
   ravines: [
     { x: -2, z: 17, w: 14, d: 3 },
     { x: -2, z: -17, w: 14, d: 3 },
     { x: 14, z: 1, w: 3, d: 10 },
-  ] as Rect[],
-  /** Where each edge's spawn zone is (range along that edge). */
+  ],
   edges: {
     east: { from: -14, to: 14 },
     north: { from: 4, to: 30 },
     south: { from: 4, to: 30 },
     west: { from: -10, to: 10 },
-  } as Record<EdgeId, { from: number; to: number }>,
+  },
+};
+
+/**
+ * Level 2: a long corridor with the bases in a row down the middle. Ravines
+ * wall off both sides, so zombies from the sides can only get in through a
+ * gap (north: just east of the Spaceship; south: between the Spaceship and
+ * the Power Plant) or round the far east ends.
+ */
+const RUST_MAP: MapDef = {
+  width: 84,
+  depth: 32,
+  hills: 0.5,
+  structures: [
+    { id: 'greenhouse', x: -34, z: 0 },
+    { id: 'powerPlant', x: -23, z: 0 },
+    { id: 'spaceship', x: -12, z: 0 },
+  ],
+  rocks: [
+    { x: 8, z: 4.5, r: 1.6 },
+    { x: 20, z: -4, r: 2 },
+    { x: -4, z: -4, r: 1.3 },
+  ],
+  ravines: [
+    // North wall, gap at x -8…0.
+    { x: -25, z: 9.5, w: 34, d: 3 },
+    { x: 15, z: 9.5, w: 30, d: 3 },
+    // South wall, gap at x -20…-12.
+    { x: -31, z: -9.5, w: 22, d: 3 },
+    { x: 9, z: -9.5, w: 42, d: 3 },
+  ],
+  edges: {
+    east: { from: -6, to: 6 },
+    north: { from: 4, to: 28 },
+    south: { from: 2, to: 28 },
+    west: { from: -6, to: 6 },
+  },
+};
+
+// ---------------------------------------------------------------------------
+//  THEMES: the look of a level. Colors are hex strings.
+// ---------------------------------------------------------------------------
+
+export interface ThemeDef {
+  sky: string;
+  fog: string;
+  fogDensity: number;
+  /** Ground color on top, and at the bottom of ravines. */
+  ground: string;
+  ravine: string;
+  light: string;
+  lightIntensity: number;
+  /** Color light bouncing up from below. */
+  bounce: string;
+  sun: string;
+  sunIntensity: number;
+  rock: string;
+  rockEdge: string;
+  border: string;
+  glow: number;
+}
+
+const NEON_THEME: ThemeDef = {
+  sky: '#05050f',
+  fog: '#05050f',
+  fogDensity: 0.006,
+  ground: '#172147',
+  ravine: '#010105',
+  light: '#ffffff',
+  lightIntensity: 0.7,
+  bounce: '#1a0d33',
+  sun: '#ffffff',
+  sunIntensity: 0.5,
+  rock: '#8a6cff',
+  rockEdge: '#9966ff',
+  border: '#4de6ff',
+  glow: 0.7,
+};
+
+/** Dusty, sun-scorched wasteland under an orange haze. */
+const RUST_THEME: ThemeDef = {
+  sky: '#c98b58',
+  fog: '#cf9866',
+  fogDensity: 0.011,
+  ground: '#b88552',
+  ravine: '#2a140a',
+  light: '#ffe6c8',
+  lightIntensity: 1.05,
+  bounce: '#6b3a1e',
+  sun: '#ffd49a',
+  sunIntensity: 0.95,
+  rock: '#7a4a30',
+  rockEdge: '#c27038',
+  border: '#7a3b1a',
+  glow: 0.55,
 };
 
 // ---------------------------------------------------------------------------
@@ -378,6 +485,41 @@ export const WAVES: SpawnGroup[][] = [
     { zombie: 'zomwes', edge: 'east', count: 1, every: 1, delay: 18 },
     { zombie: 'cyborg', edge: 'east', count: 14, every: 0.8, delay: 20 },
   ],
+];
+
+// ---------------------------------------------------------------------------
+//  LEVELS
+// ---------------------------------------------------------------------------
+
+export interface LevelDef {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  map: MapDef;
+  theme: ThemeDef;
+  waves: SpawnGroup[][];
+}
+
+export const LEVELS: LevelDef[] = [
+  {
+    id: 'neon',
+    name: 'Neon Grid',
+    icon: '🌃',
+    description: 'Open ground at night. Bases spread out.',
+    map: NEON_MAP,
+    theme: NEON_THEME,
+    waves: WAVES,
+  },
+  {
+    id: 'rust',
+    name: 'Rust Corridor',
+    icon: '🏜️',
+    description: 'A scorched canyon. Bases in a row, ravines on both sides.',
+    map: RUST_MAP,
+    theme: RUST_THEME,
+    waves: WAVES,
+  },
 ];
 
 // ---------------------------------------------------------------------------
