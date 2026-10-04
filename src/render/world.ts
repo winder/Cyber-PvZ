@@ -17,6 +17,11 @@ export interface World {
   terrain: Terrain;
   /** Animated scenery (lamps, tumbleweeds), if the level has any. */
   decor?: Decor;
+  /**
+   * Scale the theme's lights (1 = normal) and add a flash of white on top.
+   * Cinematics and weather multiply their dimming together before calling this.
+   */
+  setLighting(scale: number, flash: number): void;
 }
 
 export function createWorld(engine: Engine, level: LevelDef): World {
@@ -152,5 +157,11 @@ export function createWorld(engine: Engine, level: LevelDef): World {
 
   const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground)) : undefined;
 
-  return { scene, mats, ground, glow, edgeMarkers, terrain, decor };
+  const setLighting = (scale: number, flash: number) => {
+    hemi.intensity = theme.lightIntensity * scale + flash * 2.5;
+    sun.intensity = theme.sunIntensity * scale + flash;
+    hemi.diffuse = Color3.Lerp(hex(theme.light), new Color3(0.8, 0.85, 1), Math.min(1, flash));
+  };
+
+  return { scene, mats, ground, glow, edgeMarkers, terrain, decor, setLighting };
 }

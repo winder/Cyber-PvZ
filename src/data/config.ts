@@ -433,6 +433,16 @@ export interface ThemeDef {
   decor?: 'ruinedCity';
   /** A painted ground instead of plain colors (asphalt street, sidewalks, rubble). */
   groundStyle?: 'cityStreet';
+  /** Weather that rolls in partway through some waves. Looks only: the rules don't change. */
+  weather?: WeatherDef;
+}
+
+export interface WeatherDef {
+  kind: 'dustStorm' | 'thunderstorm';
+  /** Wave numbers as the player sees them (1 = first wave). */
+  waves: number[];
+  /** Seconds into the battle before it rolls in. */
+  after: number;
 }
 
 const NEON_THEME: ThemeDef = {
@@ -450,6 +460,7 @@ const NEON_THEME: ThemeDef = {
   rockEdge: '#9966ff',
   border: '#4de6ff',
   glow: 0.7,
+  weather: { kind: 'thunderstorm', waves: [3, 5], after: 8 },
 };
 
 /** Dusty, sun-scorched wasteland under an orange haze. */
@@ -471,6 +482,7 @@ const RUST_THEME: ThemeDef = {
   rocks: 'carWreck',
   decor: 'ruinedCity',
   groundStyle: 'cityStreet',
+  weather: { kind: 'dustStorm', waves: [3, 5], after: 8 },
 };
 
 // ---------------------------------------------------------------------------
@@ -563,6 +575,7 @@ export const LEVELS: LevelDef[] = [
 export type SoundId =
   | 'laser' | 'cryo' | 'place' | 'sell' | 'chomp' | 'zombieDie' | 'plantDie'
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
-  | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie';
+  | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie'
+  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};

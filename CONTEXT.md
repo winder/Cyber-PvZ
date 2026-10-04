@@ -131,6 +131,30 @@ city (buildings, lamps, tumbleweeds, skyline). Code: `src/render/decor.ts`.
 **Cutaway** — The row of buildings between the camera and the street sinks
 to ground-floor ruins so it never hides the game.
 
+**Collapse** — A Rust Corridor building coming down: it sinks and leans
+into the street in a cloud of dust, throwing bricks that stay as rubble.
+Set off by a **Giant**'s stomp or an Orbital Laser Strike near the street's
+edge, and by ZomWes's entrance. Looks only. Code: `Decor.crumble`.
+
+**Weather** — A dust storm (Rust Corridor) or thunderstorm (Neon Grid) that
+rolls in partway through chosen waves: thicker haze, blowing dust or rain,
+lightning. Looks only; the minimap still shows every zombie. Code:
+`ThemeDef.weather`, `src/render/weather.ts`.
+
+## Spectacle
+
+**Cinematic** — A staged moment that takes the camera and holds the battle
+still, like the pause button. Tap (or Space) skips it. Code:
+`src/render/spectacle.ts`, `RtsCamera.fly`.
+
+**Boss entrance** — The cinematic when ZomWes spawns: rumble, lights out, a
+vast shadow over the bases, the camera swoops to the boss, and its **name
+card** ("ZOMWES 8000 HAS ENTERED THE RUST CORRIDOR").
+
+**Finishing blow** — When the last zombie of the final wave falls: slow
+motion while the camera closes in, then confetti and the **victory banner**
+before the win screen.
+
 ## Testing
 
 **Debug mode** — `?debug` in the address: jump to any wave (bases repaired,

@@ -76,7 +76,8 @@ while testing.
 - `src/sim/` — all game rules: a 2D fixed-step simulation (nav grid + flow
   field pathing, waves, sun, abilities, boss, guardians). No Babylon here.
 - `src/render/` — Babylon.js view of the sim: terrain, models and skins,
-  effects, camera, level decor (ruined city).
+  effects, camera, level decor (ruined city), weather, and the spectacle
+  (cinematics: boss entrance, slow-mo finale).
 - `src/ui/` — HTML HUD and minimap; `src/editor/` — the Character Editor page.
 - `src/models/` — blocky character models (Minecraft skin layout).
 - `src/data/config.ts` — every tunable number, plus levels (map, theme, waves).

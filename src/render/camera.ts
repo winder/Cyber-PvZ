@@ -17,6 +17,16 @@ export interface CameraCallbacks {
   onHoverEnd(): void;
 }
 
+/** A camera framing for cinematic moments. */
+export interface Shot {
+  x: number;
+  z: number;
+  radius: number;
+  /** Tilt from straight down (radians). */
+  beta: number;
+  alpha: number;
+}
+
 interface Pointer {
   x: number;
   y: number;
@@ -41,6 +51,11 @@ export class RtsCamera {
   private multiTouch = false;
   private keys = new Set<string>();
   private snapTarget: number | null = null;
+  /** The cinematic shot being flown to, and where the player had the camera before it. */
+  private shot: Shot | null = null;
+  private home: Shot | null = null;
+  private shotSpeed = 3;
+  private shakeAmount = 0;
 
   constructor(
     private scene: Scene,
@@ -76,12 +91,14 @@ export class RtsCamera {
   }
 
   faceNorth(): void {
+    if (this.shot) return;
     // Take the short way round.
     const a = this.camera.alpha;
     this.snapTarget = a + wrapAngle(NORTH - a);
   }
 
   snapRotate(dir: 1 | -1): void {
+    if (this.shot) return;
     const quarter = Math.PI / 2;
     const base = this.snapTarget ?? this.camera.alpha;
     const rel = (base - NORTH) / quarter;
@@ -89,7 +106,40 @@ export class RtsCamera {
     this.snapTarget = NORTH + next * quarter;
   }
 
+  /** True while a cinematic has the camera (player input is ignored). */
+  get cinematic(): boolean {
+    return this.shot !== null;
+  }
+
+  /** Where the camera is now, as a shot. */
+  current(): Shot {
+    const c = this.camera;
+    return { x: c.target.x, z: c.target.z, radius: c.radius, beta: c.beta, alpha: c.alpha };
+  }
+
+  /** Fly to a cinematic shot; the player's view is remembered for release(). */
+  fly(shot: Shot, speed = 3): void {
+    if (!this.home) this.home = this.current();
+    this.snapTarget = null;
+    this.shot = shot;
+    this.shotSpeed = speed;
+  }
+
+  /** Fly back to where the player had the camera, then hand it back. */
+  release(speed = 3): void {
+    if (!this.home) return;
+    this.shot = this.home;
+    this.shotSpeed = speed;
+    this.home = null;
+  }
+
+  /** Shake the view (stacks; dies away by itself). */
+  shake(amount: number): void {
+    this.shakeAmount = Math.max(this.shakeAmount, amount);
+  }
+
   lookAt(x: number, z: number): void {
+    if (this.shot) return;
     this.camera.target.x = x;
     this.camera.target.z = z;
     this.clampTarget();
@@ -103,6 +153,11 @@ export class RtsCamera {
   }
 
   update(dt: number): void {
+    this.updateShake(dt);
+    if (this.shot) {
+      this.updateShot(dt);
+      return;
+    }
     // Ride up and down over the hills (but not down into ravines).
     const t = this.camera.target;
     const groundY = Math.max(0, this.terrain.surfaceHeight(t.x, t.z));
@@ -134,6 +189,30 @@ export class RtsCamera {
 
   // --------------------------------------------------------------------------
 
+  private updateShot(dt: number): void {
+    const c = this.camera, s = this.shot!;
+    const k = Math.min(1, dt * this.shotSpeed);
+    c.target.x += (s.x - c.target.x) * k;
+    c.target.z += (s.z - c.target.z) * k;
+    c.target.y += (Math.max(0, this.terrain.surfaceHeight(c.target.x, c.target.z)) - c.target.y) * k;
+    c.radius += (s.radius - c.radius) * k;
+    c.beta += (s.beta - c.beta) * k;
+    c.alpha += wrapAngle(s.alpha - c.alpha) * k;
+    // Arrived back home: the player has the camera again.
+    if (!this.home && Math.abs(s.radius - c.radius) < 0.05 && Math.hypot(s.x - c.target.x, s.z - c.target.z) < 0.05) {
+      c.radius = s.radius;
+      c.beta = s.beta;
+      c.alpha = s.alpha;
+      this.shot = null;
+    }
+  }
+
+  private updateShake(dt: number): void {
+    this.shakeAmount = Math.max(0, this.shakeAmount - dt * 1.5);
+    const a = this.shakeAmount * this.camera.radius * 0.02;
+    this.camera.targetScreenOffset.copyFromFloats((Math.random() - 0.5) * a, (Math.random() - 0.5) * a);
+  }
+
   private groundAxes(): { right: Vector3; forward: Vector3 } {
     // Camera looks from its position toward the target; flatten onto the ground.
     const a = this.camera.alpha;
@@ -143,6 +222,7 @@ export class RtsCamera {
   }
 
   private pan(dxPx: number, dyPx: number): void {
+    if (this.shot) return;
     const h = this.canvas.clientHeight || 1;
     const worldPerPx = (2 * this.camera.radius * Math.tan(this.camera.fov / 2)) / h;
     const { right, forward } = this.groundAxes();
@@ -152,10 +232,12 @@ export class RtsCamera {
   }
 
   private zoom(factor: number): void {
+    if (this.shot) return;
     this.camera.radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, this.camera.radius * factor));
   }
 
   private rotate(radians: number): void {
+    if (this.shot) return;
     this.snapTarget = null;
     this.camera.alpha += radians;
   }

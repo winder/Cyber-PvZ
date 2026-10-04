@@ -13,6 +13,12 @@ import type { Terrain } from './terrain';
 export interface Decor {
   /** Animate lamps, tumbleweeds and the camera cutaway. `bossActive` makes the lamps go wild. */
   update(dt: number, bossActive: boolean): void;
+  /** Bring down the standing building nearest (x, z), if one is within `reach`. True if one fell. */
+  crumble(x: number, z: number, reach: number): boolean;
+  /** Put every street lamp out (or let them come back on). */
+  blackout(on: boolean): void;
+  /** How hard the wind blows (1 = normal). */
+  setWind(strength: number): void;
 }
 
 /** Seeded random numbers so the city looks the same every time. */
@@ -166,7 +172,7 @@ function carSideTexture(scene: Scene): DynamicTexture {
 }
 
 /** A soft round blob: bright middle fading to nothing (light pools, smoke, sun). */
-function softDot(scene: Scene, name: string): DynamicTexture {
+export function softDot(scene: Scene, name: string): DynamicTexture {
   const tex = canvasTexture(scene, name, 64, 64, (g) => {
     const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
@@ -224,7 +230,7 @@ interface Parts { brick: Mesh[]; stone: Mesh[]; dark: Mesh[]; rebar: Mesh[] }
  * window openings, a dark gutted interior behind, stone cornices and sills,
  * a broken skyline where floors have fallen, and rubble at its feet.
  */
-function building(scene: Scene, p: Parts, rand: () => number, x0: number, w: number, side: 1 | -1, front: number): void {
+function building(scene: Scene, p: Parts, rand: () => number, x0: number, w: number, side: 1 | -1, front: number): { d: number; H: number } {
   const d = 7 + rand() * 3;
   const H = 11 + rand() * 22;
   const nb = Math.max(2, Math.round(w / 2.3));
@@ -299,9 +305,34 @@ function building(scene: Scene, p: Parts, rand: () => number, x0: number, w: num
     rb.rotation.set(rand(), rand() * 3, rand());
     (rand() < 0.65 ? p.brick : p.stone).push(rb);
   }
+  return { d, H };
 }
 
-function buildCity(scene: Scene, map: MapDef): { side: 1 | -1; meshes: Mesh[] }[] {
+/** Where one building's vertices sit inside a row's merged mesh. */
+interface VertexRange { mesh: Mesh; start: number; count: number }
+
+/** One building along the street, so it can be brought down on its own. */
+interface Building {
+  side: 1 | -1;
+  x0: number;
+  w: number;
+  d: number;
+  H: number;
+  front: number;
+  ranges: VertexRange[];
+  /** How far it has collapsed, 0 (standing) to 1 (a pile of ruins). */
+  fall: number;
+  falling: boolean;
+}
+
+interface City {
+  rows: { side: 1 | -1; meshes: Mesh[] }[];
+  buildings: Building[];
+  /** Each row mesh's vertices as built, to collapse buildings from. */
+  original: Map<Mesh, Float32Array>;
+}
+
+function buildCity(scene: Scene, map: MapDef): City {
   const rand = rng(1979);
   const brickMat = material(scene, 'cityBrick', (m) => { m.diffuseTexture = brickTexture(scene); });
   const stoneMat = material(scene, 'cityStone', (m) => { m.diffuseTexture = stoneTexture(scene); });
@@ -312,12 +343,15 @@ function buildCity(scene: Scene, map: MapDef): { side: 1 | -1; meshes: Mesh[] }[
   const rebarMat = material(scene, 'rebar', (m) => { m.diffuseColor = new Color3(0.32, 0.15, 0.07); });
   const hd = map.depth / 2;
   const rows: { side: 1 | -1; meshes: Mesh[] }[] = [];
+  const buildings: Building[] = [];
+  const original = new Map<Mesh, Float32Array>();
 
   for (const side of [1, -1] as const) {
     const edge = side > 0 ? 'north' : 'south';
     const alleys = map.alleys?.[edge] ?? [];
     const parts: Parts = { brick: [], stone: [], dark: [], rebar: [] };
     const front = side * (hd + 0.9);
+    const spans: { before: number[]; after: number[]; b: Building }[] = [];
     let x = -map.width / 2 - 12;
     while (x < map.width / 2 + 12) {
       let w = 6 + rand() * 6;
@@ -338,20 +372,117 @@ function buildCity(scene: Scene, map: MapDef): { side: 1 | -1; meshes: Mesh[] }[
           continue;
         }
       }
-      building(scene, parts, rand, x, w, side, front);
+      const before = PART_KINDS.map((k) => parts[k].length);
+      const { d, H } = building(scene, parts, rand, x, w, side, front);
+      spans.push({ before, after: PART_KINDS.map((k) => parts[k].length), b: { side, x0: x, w, d, H, front, ranges: [], fall: 0, falling: false } });
       x += w + 0.4;
     }
-    rows.push({
-      side,
-      meshes: [
-        merge(parts.brick, brickMat, `city-brick-${edge}`),
-        merge(parts.stone, stoneMat, `city-stone-${edge}`),
-        merge(parts.dark, darkMat, `city-interior-${edge}`),
-        merge(parts.rebar, rebarMat, `city-rebar-${edge}`),
-      ].filter((m): m is Mesh => m !== null),
+    // Count vertices before merging (the merge disposes the parts), so each
+    // building knows where its vertices land in the merged meshes.
+    const counts = PART_KINDS.map((k) => parts[k].map((m) => m.getTotalVertices()));
+    const mats = { brick: brickMat, stone: stoneMat, dark: darkMat, rebar: rebarMat };
+    const merged = PART_KINDS.map((k) => merge(parts[k], mats[k], `city-${k}-${edge}`));
+    for (const m of merged) {
+      if (!m) continue;
+      m.markVerticesDataAsUpdatable(VertexBuffer.PositionKind, true);
+      original.set(m, new Float32Array(m.getVerticesData(VertexBuffer.PositionKind)!));
+    }
+    for (const { before, after, b } of spans) {
+      PART_KINDS.forEach((_, k) => {
+        const mesh = merged[k];
+        if (!mesh || after[k] === before[k]) return;
+        const sum = (n: number) => counts[k].slice(0, n).reduce((a, c) => a + c, 0);
+        b.ranges.push({ mesh, start: sum(before[k]), count: sum(after[k]) - sum(before[k]) });
+      });
+      buildings.push(b);
+    }
+    rows.push({ side, meshes: merged.filter((m): m is Mesh => m !== null) });
+  }
+  return { rows, buildings, original };
+}
+
+const PART_KINDS = ['brick', 'stone', 'dark', 'rebar'] as const;
+
+// ----------------------------------------------------------------------------
+//  Buildings coming down
+// ----------------------------------------------------------------------------
+
+/** How long a building takes to come down, and how much of it is left. */
+const COLLAPSE_TIME = 1.6;
+const RUIN_HEIGHT = 0.16;
+
+interface Brick { mesh: Mesh; vx: number; vy: number; vz: number; spin: Vector3; floor: number }
+
+/** Squash a building's vertices toward the ground, leaning into the street and shuddering. */
+function poseBuilding(b: Building, original: Map<Mesh, Float32Array>): void {
+  const k = b.fall * b.fall; // slow to start, then it goes
+  const scale = 1 - (1 - RUIN_HEIGHT) * k;
+  const lean = -b.side * 0.1 * Math.sin(b.fall * Math.PI);
+  const shudder = b.falling ? (1 - b.fall) * 0.12 : 0;
+  const jx = (Math.random() - 0.5) * shudder, jz = (Math.random() - 0.5) * shudder;
+  for (const r of b.ranges) {
+    const src = original.get(r.mesh)!;
+    const pos = r.mesh.getVerticesData(VertexBuffer.PositionKind)!;
+    for (let v = r.start; v < r.start + r.count; v++) {
+      const i = v * 3;
+      const up = src[i + 1] - GROUND_BASE;
+      pos[i] = src[i] + jx;
+      pos[i + 1] = GROUND_BASE + up * scale;
+      pos[i + 2] = src[i + 2] + jz + lean * up;
+    }
+    r.mesh.updateVerticesData(VertexBuffer.PositionKind, pos);
+  }
+}
+
+/** A billowing cloud of dust from the whole front of the building. */
+function dustCloud(scene: Scene, b: Building): void {
+  const dust = new ParticleSystem('collapseDust', 400, scene);
+  dust.particleTexture = softDot(scene, 'dustTex');
+  dust.emitter = new Vector3(b.x0 + b.w / 2, 0, b.front + b.side * b.d / 2);
+  dust.minEmitBox = new Vector3(-b.w / 2, 0, -b.d / 2);
+  dust.maxEmitBox = new Vector3(b.w / 2, b.H * 0.5, b.d / 2);
+  dust.color1 = new Color4(0.55, 0.4, 0.28, 0.55);
+  dust.color2 = new Color4(0.45, 0.33, 0.24, 0.45);
+  dust.colorDead = new Color4(0.5, 0.38, 0.28, 0);
+  dust.minSize = 2;
+  dust.maxSize = 5.5;
+  dust.minLifeTime = 2;
+  dust.maxLifeTime = 4.5;
+  dust.minScaleX = dust.minScaleY = 1;
+  dust.emitRate = 160;
+  dust.manualEmitCount = 120;
+  dust.direction1 = new Vector3(-1, 0.4, -b.side * 1.5);
+  dust.direction2 = new Vector3(1, 1.2, -b.side * 0.2);
+  dust.minEmitPower = 1;
+  dust.maxEmitPower = 3;
+  dust.gravity = new Vector3(0, 0.3, 0);
+  dust.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+  dust.targetStopDuration = COLLAPSE_TIME;
+  dust.disposeOnStop = true;
+  dust.start();
+}
+
+/** Bricks thrown out into the street, where they stay as rubble. */
+function throwBricks(scene: Scene, b: Building, terrain: Terrain): Brick[] {
+  const mat = scene.getMaterialByName('cityBrick') as StandardMaterial;
+  const bricks: Brick[] = [];
+  for (let i = 0; i < 26; i++) {
+    const sz = 0.3 + Math.random() * 0.6;
+    const mesh = MeshBuilder.CreateBox('brick', { width: sz * 1.5, height: sz * 0.7, depth: sz }, scene);
+    mesh.material = mat;
+    mesh.isPickable = false;
+    const x = b.x0 + Math.random() * b.w;
+    mesh.position.set(x, 2 + Math.random() * b.H * 0.6, b.front + b.side * Math.random());
+    bricks.push({
+      mesh,
+      vx: (Math.random() - 0.5) * 3,
+      vy: Math.random() * 4,
+      vz: -b.side * (2 + Math.random() * 5),
+      spin: new Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6),
+      floor: terrain.surfaceHeight(x, b.front) + sz * 0.3,
     });
   }
-  return rows;
+  return bricks;
 }
 
 /** How far the outer ground reaches: past the camera's far plane, lost in the haze. */
@@ -784,30 +915,77 @@ export function createRuinedCity(scene: Scene, map: MapDef, terrain: Terrain, gl
   buildStreetFurniture(scene, map, terrain);
   const weeds = buildTumbleweeds(scene, map);
   let t = 0;
+  let dark = false;
+  let wind = 1;
+  const bricks: Brick[] = [];
 
   return {
+    crumble(x, z, reach) {
+      let best: Building | null = null, bestDist = reach;
+      for (const b of city.buildings) {
+        if (b.fall > 0) continue;
+        const dx = Math.max(b.x0 - x, 0, x - (b.x0 + b.w));
+        const dist = Math.hypot(dx, b.front - z);
+        if (dist <= bestDist) {
+          best = b;
+          bestDist = dist;
+        }
+      }
+      if (!best) return false;
+      best.falling = true;
+      best.fall = 0.001;
+      dustCloud(scene, best);
+      bricks.push(...throwBricks(scene, best, terrain));
+      return true;
+    },
+    blackout(on) {
+      dark = on;
+    },
+    setWind(strength) {
+      wind = strength;
+    },
     update(dt, bossActive) {
       t += dt;
+      for (const b of city.buildings) {
+        if (!b.falling) continue;
+        b.fall = Math.min(1, b.fall + dt / COLLAPSE_TIME);
+        if (b.fall >= 1) b.falling = false;
+        poseBuilding(b, city.original);
+      }
+      for (let i = bricks.length - 1; i >= 0; i--) {
+        const k = bricks[i], m = k.mesh;
+        k.vy -= 14 * dt;
+        m.position.x += k.vx * dt;
+        m.position.y += k.vy * dt;
+        m.position.z += k.vz * dt;
+        m.rotation.addInPlace(k.spin.scale(dt));
+        if (m.position.y <= k.floor && k.vy < 0) {
+          // Landed: it stays where it fell, as rubble.
+          m.position.y = k.floor;
+          m.freezeWorldMatrix();
+          bricks.splice(i, 1);
+        }
+      }
       // Cutaway: the row of buildings between the camera and the street
       // sinks to stubby ruins so it never hides the game, and rises again
       // when the camera turns away.
       const cam = scene.activeCamera;
       if (cam) {
         const camZ = cam.globalPosition.z;
-        for (const row of city) {
+        for (const row of city.rows) {
           const between = row.side > 0 ? camZ > map.depth / 2 - 2 : camZ < -map.depth / 2 + 2;
           const target = between ? CUTAWAY : 1;
           for (const m of row.meshes) m.scaling.y += (target - m.scaling.y) * 0.12;
         }
       }
       for (const lamp of lamps) {
-        const target = lampLevel(t, lamp.seed, bossActive);
-        lamp.level += (target - lamp.level) * Math.min(1, dt * (bossActive ? 30 : 8));
+        const target = dark ? 0 : lampLevel(t, lamp.seed, bossActive);
+        lamp.level += (target - lamp.level) * Math.min(1, dt * (bossActive || dark ? 30 : 8));
         lamp.bulb.emissiveColor = LAMP_COLOR.scale(lamp.level);
         lamp.pool.emissiveColor = LAMP_COLOR.scale(lamp.level * 0.45);
       }
       // The wind blows west down the street, in gusts.
-      const gust = 1 + 0.5 * Math.sin(t * 0.37) + 0.25 * Math.sin(t * 1.3);
+      const gust = (1 + 0.5 * Math.sin(t * 0.37) + 0.25 * Math.sin(t * 1.3)) * wind;
       for (const w of weeds) {
         const v = w.speed * gust;
         w.x -= v * dt;

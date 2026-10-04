@@ -199,7 +199,7 @@ export class Renderer {
     }
     for (const [id, t] of this.zombies) {
       if (!seenZombies.has(id)) {
-        t.visual.root.dispose();
+        this.topple(t);
         this.zombies.delete(id);
       }
     }
@@ -354,6 +354,27 @@ export class Renderer {
         return t < 0.5;
       },
       dispose: () => { column.dispose(); dome.dispose(); },
+    });
+  }
+
+  /** A zombie that's gone keeps its body a moment longer: it keels over and sinks away. */
+  private topple(t: Tracked): void {
+    const root = t.visual.root;
+    t.bar.setEnabled(false);
+    const ground = this.world.terrain.terrainHeight(t.x, t.z);
+    const startY = root.position.y, startTilt = root.rotation.x;
+    let time = 0;
+    this.effects.push({
+      update: (dt) => {
+        time += dt;
+        const k = Math.min(1, time / 0.45);
+        root.rotation.x = startTilt + (-Math.PI / 2 - startTilt) * k * k;
+        // Flyers drop out of the sky; then everyone sinks into the ground.
+        const sink = Math.max(0, time - 0.5) * 2;
+        root.position.y = startY + (ground - startY) * k - sink;
+        return time < 1;
+      },
+      dispose: () => root.dispose(),
     });
   }
 

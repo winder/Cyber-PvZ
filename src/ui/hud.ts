@@ -184,6 +184,33 @@ export class Hud {
     this.toastTimer = window.setTimeout(() => el.classList.remove('show'), ms);
   }
 
+  /** The boss's name card, slammed across the middle of the screen. */
+  showCard(title: string, subtitle: string, note: string): void {
+    $('namecard-title').textContent = title;
+    $('namecard-sub').textContent = subtitle;
+    $('namecard-note').textContent = note;
+    const el = $('namecard');
+    el.classList.remove('hide');
+    el.classList.add('show');
+  }
+
+  hideCard(): void {
+    const el = $('namecard');
+    if (!el.classList.contains('show')) return;
+    el.classList.remove('show');
+    el.classList.add('hide');
+  }
+
+  showBanner(title: string, subtitle: string): void {
+    $('banner-title').textContent = title;
+    $('banner-sub').textContent = subtitle;
+    $('banner').classList.add('show');
+  }
+
+  hideBanner(): void {
+    $('banner').classList.remove('show');
+  }
+
   showOverlay(title: string, text: string, button: string): void {
     $('overlay-title').textContent = title;
     $('overlay-text').innerHTML = text;

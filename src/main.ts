@@ -7,6 +7,8 @@ import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { isRotatable } from './sim/shapes';
 import { RtsCamera } from './render/camera';
 import { Renderer } from './render/renderer';
+import { Spectacle } from './render/spectacle';
+import { Weather } from './render/weather';
 import { createWorld } from './render/world';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
@@ -45,6 +47,21 @@ const renderer = new Renderer(world, game);
 const camera = makeCamera();
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, game, (x, z) => camera.lookAt(x, z));
 const hud = makeHud();
+const spectacle = new Spectacle(world, camera, game, level, {
+  sound: (id) => audio.play(id),
+  card: (title, subtitle, note) => hud.showCard(title, subtitle, note),
+  clearCard: () => hud.hideCard(),
+  banner: (title, subtitle) => hud.showBanner(title, subtitle),
+  clearBanner: () => hud.hideBanner(),
+  finished: () => {
+    hud.hideBanner();
+    hud.showOverlay('You Win! 🌱⚡', 'The Mega-Brain Greenhouse is safe.<br>The zombies have been laser-ed.', 'Play again');
+  },
+});
+const weather = new Weather(world, level.theme, camera, {
+  sound: (id) => audio.play(id),
+  toast: (text) => hud.toast(text, 2500),
+});
 
 // -----------------------------------------------------------------------------
 //  Debug mode: add ?debug to the address. Jump to any wave, unlimited sun.
@@ -209,6 +226,7 @@ function rotate(): void {
 }
 
 function handleTap(px: number, py: number): void {
+  if (spectacle.skip()) return;
   const pt = camera.groundPoint(px, py);
   if (!pt) return;
 
@@ -274,14 +292,8 @@ function react(events: SimEvent[]): void {
           audio.play('zombieDie');
         }
         break;
-      case 'bossSpawn':
-        audio.play('bossRoar');
-        {
-          const guards = ZOMBIES[e.type].guards;
-          const escort = guards ? ` with ${guards.count} ${ZOMBIES[guards.zombie].name}s` : '';
-          hud.toast(`⚠️ ${ZOMBIES[e.type].name} IS COMING${escort}! ⚠️`, 3500);
-        }
-        break;
+      // Its entrance (name card and all) is staged by the Spectacle.
+      case 'bossSpawn': audio.play('bossRoar'); break;
       case 'stomp': audio.play('stomp'); break;
       case 'wander':
         hud.toast(`👣 ${ZOMBIES[e.type].name} is stomping toward the ${STRUCTURES[game.structures[e.to].type].name}!`, 3000);
@@ -320,10 +332,7 @@ function react(events: SimEvent[]): void {
         audio.play('click');
         hud.toast(`🐞 Jumped to wave ${e.wave + 1}${e.wave === game.totalWaves - 1 ? ' (final wave!)' : ''}`);
         break;
-      case 'won':
-        audio.play('win');
-        hud.showOverlay('You Win! 🌱⚡', 'The Mega-Brain Greenhouse is safe.<br>The zombies have been laser-ed.', 'Play again');
-        break;
+      // 'won': the Spectacle plays the finale, then shows the win screen.
       case 'lost':
         audio.play('lose');
         hud.showOverlay('Brains Eaten! 🧟', `The zombies got the Mega-Brain Greenhouse on wave ${game.wave + 1}.`, 'Try again');
@@ -345,7 +354,7 @@ function restart(): void {
 
 window.addEventListener('keydown', (e) => {
   if (e.key === ' ') {
-    ui.paused = !ui.paused;
+    if (!spectacle.skip()) ui.paused = !ui.paused;
     e.preventDefault();
   } else if (e.key === 'f') {
     ui.speed = ui.speed === 1 ? 2 : 1;
@@ -375,7 +384,9 @@ let acc = 0;
 
 engine.runRenderLoop(() => {
   const dt = Math.min(0.1, engine.getDeltaTime() / 1000);
-  if (ui.started && !ui.paused && game.phase === 'battle') {
+  // A cinematic holds the battle still, like the pause button.
+  const running = ui.started && !ui.paused && !spectacle.holdSim && game.phase === 'battle';
+  if (running) {
     acc += dt * GAME_SPEED * ui.speed;
     // Enough steps to keep up at top speed on a slow frame, without spiralling.
     let steps = 0;
@@ -392,10 +403,15 @@ engine.runRenderLoop(() => {
   updateDebug();
   const events = game.drainEvents();
   renderer.handle(events);
+  spectacle.handle(events);
+  weather.handle(events);
   react(events);
 
+  spectacle.update(dt);
+  weather.update(dt, running ? dt * GAME_SPEED * ui.speed : 0);
+  world.setLighting(spectacle.light * weather.light, weather.flash);
   camera.update(dt);
-  renderer.sync(ui.paused ? 0 : dt * GAME_SPEED * ui.speed);
+  renderer.sync(ui.paused ? 0 : dt * GAME_SPEED * ui.speed * spectacle.timeScale);
   renderer.setSelected(game.phase === 'build' ? ui.selectedPlant : null);
   renderer.showEdges(game.phase === 'build' ? game.wavePreview().map((l) => l.edge) : []);
   if (game.phase !== 'battle' && ui.aiming) {
@@ -443,4 +459,4 @@ function levelPicker(): string {
 }
 
 // Handy for debugging in the browser console.
-Object.assign(window, { game, camera, renderer, ABILITIES });
+Object.assign(window, { game, camera, renderer, spectacle, weather, ABILITIES });
