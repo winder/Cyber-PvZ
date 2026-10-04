@@ -363,4 +363,4 @@ if (skipTitle) {
 );
 
 // Handy for debugging in the browser console.
-Object.assign(window, { game, camera, ABILITIES });
+Object.assign(window, { game, camera, renderer, ABILITIES });

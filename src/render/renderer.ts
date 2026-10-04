@@ -18,6 +18,8 @@ interface Tracked {
   /** Visual position, eased toward the sim position for smooth motion. */
   x: number;
   z: number;
+  /** Eased ground height under flyers and giants, so they glide over dips. */
+  groundY?: number;
 }
 
 interface Effect {
@@ -165,7 +167,16 @@ export class Renderer {
       const root = t.visual.root;
       const chewing = z.attacking !== null;
       // Giants stride straight over ravines at rim height.
-      const ground = def.giant ? surfaceHeight(t.x, t.z) : terrainHeight(t.x, t.z);
+      let ground: number;
+      if (def.giant || def.flying) {
+        // Flyers and giants pass over ravines (as if they weren't there) and
+        // ease up and down over the hills instead of snapping.
+        const target = surfaceHeight(t.x, t.z);
+        t.groundY = t.groundY === undefined ? target : t.groundY + (target - t.groundY) * Math.min(1, dt * 3);
+        ground = t.groundY;
+      } else {
+        ground = terrainHeight(t.x, t.z);
+      }
       const bob = def.flying
         ? FLY_HEIGHT + Math.sin(this.time * 4 + z.id) * 0.2
         : chewing ? Math.abs(Math.sin(this.time * 12 + z.id)) * 0.12 : Math.abs(Math.sin(this.time * 8 + z.id)) * 0.06;
@@ -228,7 +239,7 @@ export class Renderer {
             }
             this.strikeBlast(e.x, e.z, 4);
           } else {
-            this.burst(e.x, e.z, def.color, terrainHeight(e.x, e.z) + (def.flying ? FLY_HEIGHT : 0.6));
+            this.burst(e.x, e.z, def.color, def.flying ? surfaceHeight(e.x, e.z) + FLY_HEIGHT : terrainHeight(e.x, e.z) + 0.6);
           }
           break;
         }
@@ -255,7 +266,7 @@ export class Renderer {
 
   private beam(fx: number, fz: number, tx: number, tz: number, toAir: boolean, color: string): void {
     const from = new Vector3(fx, terrainHeight(fx, fz) + 1.05, fz);
-    const to = new Vector3(tx, terrainHeight(tx, tz) + (toAir ? FLY_HEIGHT + 0.8 : 0.9), tz);
+    const to = new Vector3(tx, toAir ? surfaceHeight(tx, tz) + FLY_HEIGHT + 0.8 : terrainHeight(tx, tz) + 0.9, tz);
     const len = Vector3.Distance(from, to);
     const mesh = MeshBuilder.CreateCylinder('beam', { height: len, diameter: 0.09, tessellation: 6 }, this.world.scene);
     mesh.material = this.beamMat(color);
