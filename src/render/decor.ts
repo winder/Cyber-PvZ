@@ -354,21 +354,56 @@ function buildCity(scene: Scene, map: MapDef): { side: 1 | -1; meshes: Mesh[] }[
   return rows;
 }
 
-/** Ground beyond the map edges, so the city stands on something. */
-function buildOuterGround(scene: Scene, map: MapDef, terrain: Terrain, color: Color3): void {
-  const w = map.width + 160, d = map.depth + 120;
-  const ground = MeshBuilder.CreateGround('outerGround', {
-    width: w, height: d, subdivisionsX: Math.round(w / 2), subdivisionsY: Math.round(d / 2), updatable: true,
-  }, scene);
-  const pos = ground.getVerticesData(VertexBuffer.PositionKind)!;
-  for (let i = 0; i < pos.length; i += 3) {
-    const x = pos[i], z = pos[i + 2];
-    // Sunk out of sight under the map itself, so it doesn't fill the ravines.
-    const underMap = Math.abs(x) < map.width / 2 - 0.5 && Math.abs(z) < map.depth / 2 - 0.5;
-    pos[i + 1] = underMap ? -30 : terrain.surfaceHeight(x, z) - 0.3;
+/** How far the outer ground reaches: past the camera's far plane, lost in the haze. */
+const OUTER_REACH = 450;
+
+/**
+ * Grid lines along one axis: every 2 units near the map, then spreading out
+ * as they head into the haze where detail can't be seen.
+ */
+function outerLines(half: number): number[] {
+  const near = half + 40;
+  const out: number[] = [];
+  for (let v = 0; v <= near; v += 2) out.push(v);
+  for (let step = 4, v = near + step; ; step *= 1.4, v += step) {
+    out.push(Math.min(v, OUTER_REACH));
+    if (v >= OUTER_REACH) break;
   }
-  ground.updateVerticesData(VertexBuffer.PositionKind, pos);
-  ground.createNormals(true);
+  return [...out.slice(1).reverse().map((v) => -v), ...out];
+}
+
+/**
+ * Ground beyond the map edges, so the city stands on something. It runs out
+ * far enough that its edge is swallowed by the fog, with no sky showing
+ * between the street and the buildings or skyline.
+ */
+function buildOuterGround(scene: Scene, map: MapDef, terrain: Terrain, color: Color3): void {
+  const xs = outerLines(map.width / 2), zs = outerLines(map.depth / 2).reverse();
+  const positions: number[] = [], indices: number[] = [], uvs: number[] = [];
+  for (const z of zs) {
+    for (const x of xs) {
+      // Sunk out of sight under the map itself, so it doesn't fill the ravines.
+      const underMap = Math.abs(x) < map.width / 2 - 0.5 && Math.abs(z) < map.depth / 2 - 0.5;
+      // Follows the hills near the map, easing flat further out.
+      const beyond = Math.max(Math.abs(x) - map.width / 2, Math.abs(z) - map.depth / 2);
+      const hill = terrain.surfaceHeight(x, z) * Math.max(0, 1 - beyond / 40);
+      positions.push(x, underMap ? -30 : hill - 0.3, z);
+      uvs.push(x / 8, z / 8);
+    }
+  }
+  const row = xs.length;
+  for (let r = 0; r < zs.length - 1; r++) {
+    for (let c = 0; c < row - 1; c++) {
+      const i = r * row + c;
+      indices.push(i + 1 + row, i + 1, i, i + row, i + 1 + row, i);
+    }
+  }
+  const normals: number[] = [];
+  VertexData.ComputeNormals(positions, indices, normals);
+  const data = new VertexData();
+  Object.assign(data, { positions, indices, normals, uvs });
+  const ground = new Mesh('outerGround', scene);
+  data.applyToMesh(ground);
   ground.material = material(scene, 'outerGround', (m) => {
     m.diffuseColor = color.scale(0.7);
     m.specularColor = Color3.Black();
