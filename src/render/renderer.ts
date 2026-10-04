@@ -139,6 +139,8 @@ export class Renderer {
         this.pop(visual.root);
       }
       if (t.visual.turret) t.visual.turret.rotation.y = yaw(p.facing);
+      // Walls run along their angle (local x → world direction of the angle).
+      t.visual.root.rotation.y = -p.angle;
       const pulse = hyper ? 1 + 0.08 * Math.sin(this.time * 20 + p.id) : 1;
       if (!this.popping.has(t.visual.root)) t.visual.root.scaling.setAll(pulse);
       this.setBar(t.bar, p.hp / PLANTS[p.type].hp);
@@ -393,7 +395,7 @@ export class Renderer {
   // --------------------------------------------------------------------------
 
   /** Show a see-through plant where it would be placed. Pass null to hide. */
-  setGhost(type: PlantId | null, x = 0, z = 0, valid = true): void {
+  setGhost(type: PlantId | null, x = 0, z = 0, valid = true, angle = 0): void {
     if (type !== this.ghostType) {
       this.ghost?.dispose();
       this.ghost = null;
@@ -410,7 +412,9 @@ export class Renderer {
     }
     const h = this.world.terrain.terrainHeight(x, z);
     this.ghost.position.set(x, h, z);
-    const range = PLANTS[type].attack?.range ?? PLANTS[type].radius + 0.3;
+    this.ghost.rotation.y = -angle;
+    const wall = PLANTS[type].wall;
+    const range = PLANTS[type].attack?.range ?? (wall ? wall.length / 2 + 0.3 : PLANTS[type].radius + 0.3);
     this.ghostRing.setEnabled(true);
     this.ghostRing.position.set(x, h + 0.1, z);
     this.ghostRing.scaling.setAll(range);
@@ -420,7 +424,11 @@ export class Renderer {
   setSelected(plantId: number | null): void {
     const p = plantId === null ? undefined : this.game.plants.find((pl) => pl.id === plantId);
     this.selectRing.setEnabled(!!p);
-    if (p) this.selectRing.position.set(p.x, this.world.terrain.terrainHeight(p.x, p.z) + 0.1, p.z);
+    if (p) {
+      this.selectRing.position.set(p.x, this.world.terrain.terrainHeight(p.x, p.z) + 0.1, p.z);
+      const wall = PLANTS[p.type].wall;
+      this.selectRing.scaling.setAll(wall ? (wall.length + 0.5) / 1.7 : 1);
+    }
   }
 
   setAim(on: boolean, x = 0, z = 0): void {

@@ -72,7 +72,7 @@ const PLAN: [PlantId, number, number][] = [
   ['laserPea', -4, 6], ['laserPea', -16, -6], ['forceNut', -1, 0], ['forceNut', -1, 1.3], ['forceNut', -1, -1.3],
   ['solarFlower', -38, 3], ['solarFlower', -38, -3], ['cryoPea', -7, 0],
   ['laserPea', -8, 4.5], ['laserPea', -8, -4.5], ['laserPea', -18, 5], ['laserPea', -14, -5],
-  ['forceNut', -1, 2.6], ['forceNut', -1, -2.6], ['cryoPea', -4, -6],
+  ['forceNut', -1, 2.6], ['forceNut', -1, -2.6], ['cryoPea', -2.5, -6.5],
   ['laserPea', -5, 0], ['laserPea', -10, 2], ['laserPea', -10, -2], ['laserPea', -20, 3], ['laserPea', -20, -3],
   ['laserPea', -3, 3.5], ['laserPea', -1.5, -5.5], ['cryoPea', -12, 4], ['laserPea', -26, 4], ['laserPea', -26, -4],
   ['laserPea', -16, 6.5], ['laserPea', -7, 6.5], ['laserPea', -7, -6.5], ['laserPea', -28, 6], ['laserPea', -28, -6],

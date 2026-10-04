@@ -30,6 +30,7 @@ mode, e.g. `?level=2&debug`.
 | Turn camera | Two-finger twist | Right-drag, or Q / E |
 | Plant | Tap a card, then tap the ground | Click a card (or 1–4), then click |
 | Sell a plant | Tap it (before the wave) | Click it |
+| Turn a wall | ↻ Turn button | R (or ↻ Turn) |
 | Start the wave | GO! | GO! or Enter |
 | Pause / speed | ⏸ / 1× buttons | Space / F |
 

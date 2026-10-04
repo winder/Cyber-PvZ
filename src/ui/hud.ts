@@ -9,6 +9,7 @@ export interface HudHandlers {
   onGo(): void;
   onSell(): void;
   onCancelSell(): void;
+  onRotate(): void;
   onPause(): void;
   onSpeed(): void;
   onCompass(): void;
@@ -57,6 +58,7 @@ export class Hud {
     }
 
     $('btn-go').addEventListener('click', h.onGo);
+    $('btn-rotate').addEventListener('click', h.onRotate);
     $('btn-pause').addEventListener('click', h.onPause);
     $('btn-speed').addEventListener('click', h.onSpeed);
     $('btn-compass').addEventListener('click', h.onCompass);
@@ -77,6 +79,7 @@ export class Hud {
     speed: number;
     heading: number;
     muted: boolean;
+    canRotate: boolean;
   }): void {
     const g = this.game;
     const build = g.phase === 'build';
@@ -92,6 +95,7 @@ export class Hud {
     const selling = build && ui.selectedPlant !== null;
     $('cards').style.display = build && !selling ? 'flex' : 'none';
     $('btn-go').style.display = build ? 'block' : 'none';
+    $('btn-rotate').style.display = ui.canRotate ? 'flex' : 'none';
     $('abilities').style.display = battle ? 'flex' : 'none';
     $('sellbar').style.display = selling ? 'flex' : 'none';
 

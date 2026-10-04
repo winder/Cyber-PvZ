@@ -150,18 +150,36 @@ const plantFactories: Record<PlantId, Factory> = {
   },
 
   forceNut(scene, mats, name) {
+    // A wall: a row of nut shells holding up a glowing force-field panel.
+    // It runs along local x (the renderer turns it to the wall's angle).
     const root = new TransformNode(name, scene);
-    const nut = MeshBuilder.CreateSphere(`${name}-nut`, { diameterX: 0.95, diameterY: 1.2, diameterZ: 0.85, segments: 8 }, scene);
-    nut.material = mats.dark('#c08040');
-    part(nut, root, 0, 0.6, 0);
-    const field = MeshBuilder.CreateSphere(`${name}-field`, { diameterX: 1.35, diameterY: 1.6, diameterZ: 1.35, segments: 10 }, scene);
+    const { length, thickness } = PLANTS.forceNut.wall!;
+    const base = MeshBuilder.CreateBox(`${name}-base`, { width: length, height: 0.25, depth: thickness }, scene);
+    base.material = mats.dark('#7a5a3a');
+    part(base, root, 0, 0.12, 0);
+    const nuts = 4;
+    for (let i = 0; i < nuts; i++) {
+      const x = -length / 2 + (length / nuts) * (i + 0.5);
+      const nut = MeshBuilder.CreateSphere(`${name}-nut${i}`, { diameterX: 0.75, diameterY: 0.9, diameterZ: thickness * 0.95, segments: 8 }, scene);
+      nut.material = mats.dark('#c08040');
+      part(nut, root, x, 0.55, 0);
+    }
+    const field = MeshBuilder.CreateBox(`${name}-field`, { width: length, height: 1.3, depth: 0.3 }, scene);
     field.material = mats.neon(PLANTS.forceNut.color, 0.8, 0.3);
-    part(field, root, 0, 0.7, 0);
-    const ring = MeshBuilder.CreateTorus(`${name}-ring`, { diameter: 1.3, thickness: 0.05, tessellation: 24 }, scene);
-    ring.material = mats.neon(PLANTS.forceNut.color, 1.2);
-    part(ring, root, 0, 0.7, 0);
+    part(field, root, 0, 0.75, 0);
+    for (const y of [0.15, 1.4]) {
+      const rail = MeshBuilder.CreateBox(`${name}-rail${y}`, { width: length, height: 0.07, depth: 0.12 }, scene);
+      rail.material = mats.neon(PLANTS.forceNut.color, 1.4);
+      part(rail, root, 0, y, 0);
+    }
+    for (const x of [-length / 2, length / 2]) {
+      const post = MeshBuilder.CreateBox(`${name}-post${x}`, { width: 0.14, height: 1.45, depth: 0.14 }, scene);
+      post.material = mats.neon(PLANTS.forceNut.color, 1.4);
+      part(post, root, x, 0.72, 0);
+    }
     return { root, height: 1.6 };
   },
+
 
   cryoPea(scene, mats, name) {
     const root = new TransformNode(name, scene);

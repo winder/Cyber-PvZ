@@ -45,6 +45,11 @@ export interface PlantDef {
   };
   /** Sun per second during battle. */
   sunPerSecond?: number;
+  /**
+   * Walls are long and can be turned (45° at a time) to steer zombies.
+   * Length runs along the wall; thickness across it.
+   */
+  wall?: { length: number; thickness: number };
 }
 
 export interface ZombieDef {
@@ -136,11 +141,12 @@ export const PLANTS: Record<PlantId, PlantDef> = {
   forceNut: {
     name: 'Force-Field Nut',
     icon: '🥜',
-    description: 'A tough wall. Zombies must chew through it.',
-    cost: 50,
-    hp: 1500,
+    description: 'A long wall you can turn (R or ↻). Steer zombies, or make them chew through.',
+    cost: 75,
+    hp: 1800,
     radius: 0.6,
     color: '#38e8ff',
+    wall: { length: 3.2, thickness: 0.9 },
   },
   cryoPea: {
     name: 'Cryo-Pea',

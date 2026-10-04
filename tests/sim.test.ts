@@ -79,23 +79,64 @@ describe('Game', () => {
   it('a fully walled-in zombie chews its way out', () => {
     const g = new Game();
     g.sun = 99999;
-    const n = 15;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      expect(g.place('forceNut', 3 + 3 * Math.cos(a), 3 * Math.sin(a)).ok).toBe(true);
+    // A box of four walls around (3, 0).
+    const H = Math.PI / 2;
+    for (const [x, z, a] of [[3, 2.05, 0], [3, -2.05, 0], [3 - 2.05, 0, H], [3 + 2.05, 0, H]]) {
+      expect(g.place('forceNut', x, z, a).ok).toBe(true);
     }
     g.startWave();
     const z = g.spawn('cyborg', 'east');
     z.x = 3;
     z.z = 0;
     runSeconds(g, 10);
-    expect(Math.hypot(z.x - 3, z.z)).toBeLessThan(3);
+    expect(Math.abs(z.x - 3) < 2.5 && Math.abs(z.z) < 2.5).toBe(true);
     expect(g.plants.some((p) => p.hp < PLANTS.forceNut.hp)).toBe(true);
+  });
+
+  it('walls are long, and turning one changes what it blocks', () => {
+    const g = new Game();
+    const r = g.place('forceNut', 0, 10);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // East–west: blocks along x, not along z.
+    expect(g.nav.plantAt[g.nav.cellOf(1.4, 10)]).toBe(r.plant.id);
+    expect(g.nav.plantAt[g.nav.cellOf(0, 11.4)]).toBe(-1);
+    // Turned 90°: now it runs north–south.
+    expect(g.rotatePlant(r.plant.id, Math.PI / 2).ok).toBe(true);
+    expect(g.nav.plantAt[g.nav.cellOf(1.4, 10)]).toBe(-1);
+    expect(g.nav.plantAt[g.nav.cellOf(0, 11.4)]).toBe(r.plant.id);
+    // Can't turn into another plant.
+    expect(g.place('laserPea', 1.6, 10).ok).toBe(true);
+    expect(g.rotatePlant(r.plant.id, 0).ok).toBe(false);
+    // Walls can't overlap each other, but can sit end to end.
+    expect(g.place('forceNut', 0, 13.2, Math.PI / 2).ok).toBe(true);
+    expect(g.place('forceNut', 0, 12.5, Math.PI / 2).ok).toBe(false);
+  });
+
+  it('a diagonal wall line steers zombies along it', () => {
+    // A diagonal fence in a zombie's way: it walks round the end instead of chewing through.
+    const g = new Game();
+    g.sun = 99999;
+    const a = Math.PI / 4;
+    // Four walls end to end, running from (27, -7) up to (18, 2).
+    for (let i = 0; i < 4; i++) {
+      expect(g.place('forceNut', 26 - i * 2.3, -6 + i * 2.3, a + Math.PI / 2).ok).toBe(true);
+    }
+    g.startWave();
+    const z = g.spawn('cyborg', 'east');
+    z.x = 32; z.z = -2;
+    let chewed = false;
+    for (let i = 0; i < TICK_RATE * 15; i++) {
+      g.step();
+      if (z.attacking?.kind === 'plant') chewed = true;
+    }
+    expect(chewed).toBe(false); // it went round rather than through
+    expect(g.plants.every((p) => p.hp === PLANTS.forceNut.hp)).toBe(true);
   });
 
   it('flying zombies fly over plant walls', () => {
     const g = new Game();
-    for (let zz = -3; zz <= 3; zz += 1.2) expect(g.place('forceNut', 26, zz).ok).toBe(true);
+    for (const zz of [-1.6, 1.6]) expect(g.place('forceNut', 26, zz, Math.PI / 2).ok).toBe(true);
     g.startWave();
     const z = g.spawn('jetpack', 'east');
     z.x = 30;

@@ -2,7 +2,8 @@ import {
   ABILITIES, ECONOMY, LEVELS, PLANTS, STRUCTURES, ZOMBIES,
   type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
-import { CELL, NavGrid } from './nav';
+import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
+import { boundingRadius, distanceToPlant, footprintPoints, isRotatable, thicknessAcross } from './shapes';
 
 /** Simulation steps per second. */
 export const TICK_RATE = 30;
@@ -23,6 +24,8 @@ export interface Plant {
   cooldown: number;
   /** Angle the plant is facing (radians, 0 = +x). */
   facing: number;
+  /** Walls: which way the wall runs (radians, 0 = east–west). */
+  angle: number;
 }
 
 export interface Zombie {
@@ -143,42 +146,62 @@ export class Game {
   //  Player actions
   // --------------------------------------------------------------------------
 
-  canPlace(type: PlantId, x: number, z: number): { ok: true } | { ok: false; reason: string } {
+  canPlace(type: PlantId, x: number, z: number, angle = 0): { ok: true } | { ok: false; reason: string } {
     if (this.phase !== 'build') return { ok: false, reason: 'You can only plant before the wave.' };
-    const def = PLANTS[type];
-    if (this.sun < def.cost) return { ok: false, reason: 'Not enough sun.' };
-    const r = def.radius;
-    if (Math.abs(x) > this.map.width / 2 - r || Math.abs(z) > this.map.depth / 2 - r) {
+    if (this.sun < PLANTS[type].cost) return { ok: false, reason: 'Not enough sun.' };
+    return this.fits(type, x, z, angle);
+  }
+
+  /** Is there room for this plant here (ignoring one plant, e.g. itself when turning)? */
+  private fits(type: PlantId, x: number, z: number, angle: number, ignore?: Plant): { ok: true } | { ok: false; reason: string } {
+    const pts = footprintPoints(type, x, z, angle);
+    const hw = this.map.width / 2, hd = this.map.depth / 2;
+    if (pts.some(([px, pz]) => Math.abs(px) > hw || Math.abs(pz) > hd)) {
       return { ok: false, reason: 'Too close to the edge.' };
     }
-    let onRock = false;
-    this.nav.forCellsInCircle(x, z, r * 0.8, (cell) => { if (this.nav.blocked[cell]) onRock = true; });
-    if (onRock) return { ok: false, reason: 'Something is in the way.' };
+    if (pts.some(([px, pz]) => this.nav.blocked[this.nav.cellOf(px, pz)])) {
+      return { ok: false, reason: 'Something is in the way.' };
+    }
     for (const s of this.structures) {
       if (!s.alive) continue;
-      if (Math.hypot(s.x - x, s.z - z) < STRUCTURES[s.type].radius + r) {
-        return { ok: false, reason: 'Too close to a building.' };
-      }
+      const r = STRUCTURES[s.type].radius;
+      if (pts.some(([px, pz]) => Math.hypot(s.x - px, s.z - pz) < r)) return { ok: false, reason: 'Too close to a building.' };
     }
     for (const p of this.plants) {
-      if (Math.hypot(p.x - x, p.z - z) < PLANTS[p.type].radius + r) {
-        return { ok: false, reason: 'Too close to another plant.' };
-      }
+      if (p === ignore) continue;
+      if (Math.hypot(p.x - x, p.z - z) > boundingRadius(p.type) + boundingRadius(type) + 0.1) continue;
+      if (pts.some(([px, pz]) => distanceToPlant(p, px, pz) === 0)) return { ok: false, reason: 'Too close to another plant.' };
     }
     return { ok: true };
   }
 
-  place(type: PlantId, x: number, z: number): PlaceResult {
-    const check = this.canPlace(type, x, z);
+  place(type: PlantId, x: number, z: number, angle = 0): PlaceResult {
+    const check = this.canPlace(type, x, z, angle);
     if (!check.ok) return check;
     const def = PLANTS[type];
     this.sun -= def.cost;
-    const plant: Plant = { id: this.nextId++, type, x, z, hp: def.hp, cooldown: 0, facing: 0 };
+    const plant: Plant = {
+      id: this.nextId++, type, x, z, hp: def.hp, cooldown: 0, facing: 0, angle: isRotatable(type) ? angle : 0,
+    };
     this.plants.push(plant);
-    this.nav.setPlant(plant.id, x, z, def.radius, this.plantPathCost(type));
+    this.markPlant(plant);
     this.fieldDirty = true;
     this.events.push({ t: 'plantPlaced', id: plant.id });
     return { ok: true, plant };
+  }
+
+  /** Turn a wall (build phase only). Fails if it would hit something. */
+  rotatePlant(id: number, angle: number): { ok: true } | { ok: false; reason: string } {
+    if (this.phase !== 'build') return { ok: false, reason: 'You can only turn walls before the wave.' };
+    const plant = this.plants.find((p) => p.id === id);
+    if (!plant || !isRotatable(plant.type)) return { ok: false, reason: 'That can’t be turned.' };
+    const check = this.fits(plant.type, plant.x, plant.z, angle, plant);
+    if (!check.ok) return { ok: false, reason: 'No room to turn it there.' };
+    this.nav.clearPlant(plant.id);
+    plant.angle = angle;
+    this.remarkNear(plant);
+    this.fieldDirty = true;
+    return { ok: true };
   }
 
   /** The plant under (x, z), if any. */
@@ -186,13 +209,31 @@ export class Game {
     let best: Plant | undefined;
     let bestD = Infinity;
     for (const p of this.plants) {
-      const d = Math.hypot(p.x - x, p.z - z);
-      if (d < PLANTS[p.type].radius + 0.3 && d < bestD) {
+      const d = distanceToPlant(p, x, z);
+      if (d < 0.3 && d < bestD) {
         best = p;
         bestD = d;
       }
     }
     return best;
+  }
+
+  /** Mark the cells a plant blocks (a little wider than its body, so neighbors seal gaps). */
+  private markPlant(p: Plant): void {
+    const cost = this.plantPathCost(p.type);
+    this.nav.forCellsInCircle(p.x, p.z, boundingRadius(p.type) + PLANT_BLOCK_PAD, (cell) => {
+      if (this.nav.blocked[cell]) return;
+      if (distanceToPlant(p, this.nav.centerX(cell), this.nav.centerZ(cell)) > PLANT_BLOCK_PAD) return;
+      this.nav.plantAt[cell] = p.id;
+      this.nav.extraCost[cell] = cost;
+    });
+  }
+
+  /** Re-mark this plant and its neighbors (after one moved, turned, or went away). */
+  private remarkNear(around: { x: number; z: number }): void {
+    for (const p of this.plants) {
+      if (Math.hypot(p.x - around.x, p.z - around.z) < 6) this.markPlant(p);
+    }
   }
 
   sell(id: number): boolean {
@@ -452,7 +493,7 @@ export class Game {
     zb.facing = Math.atan2(plant.z - zb.z, plant.x - zb.x);
     if (def.sweep) {
       for (const p of this.plants) {
-        if (Math.hypot(p.x - zb.x, p.z - zb.z) <= def.radius + def.sweep) p.hp -= def.dps * DT;
+        if (distanceToPlant(p, zb.x, zb.z) <= def.radius + def.sweep) p.hp -= def.dps * DT;
       }
     } else {
       plant.hp -= def.dps * DT;
@@ -478,7 +519,7 @@ export class Game {
       return;
     }
 
-    const plant = this.plants.find((p) => p.hp > 0 && Math.hypot(p.x - zb.x, p.z - zb.z) <= def.radius + PLANTS[p.type].radius + 0.6);
+    const plant = this.plants.find((p) => p.hp > 0 && distanceToPlant(p, zb.x, zb.z) <= def.radius + 0.6);
     if (plant) {
       this.attackPlant(zb, plant);
       return;
@@ -532,13 +573,13 @@ export class Game {
     // Plants in front block the way: stomp everything nearby until they're gone.
     const blocker = this.plants.find((p) => {
       const px = p.x - zb.x, pz = p.z - zb.z;
-      return p.hp > 0 && Math.hypot(px, pz) < def.radius + PLANTS[p.type].radius + 0.3 && px * dx + pz * dz > 0;
+      return p.hp > 0 && distanceToPlant(p, zb.x, zb.z) < def.radius + 0.3 && px * dx + pz * dz > 0;
     });
     if (blocker) {
       zb.attacking = { kind: 'plant', id: blocker.id };
       const r = def.giant!.stompRadius;
       for (const p of this.plants) {
-        if (Math.hypot(p.x - zb.x, p.z - zb.z) <= r + PLANTS[p.type].radius) p.hp -= def.dps * DT;
+        if (distanceToPlant(p, zb.x, zb.z) <= r) p.hp -= def.dps * DT;
       }
       if (this.chompTimer <= 0) {
         this.chompTimer = 0.6;
@@ -691,11 +732,7 @@ export class Game {
     const [plant] = this.plants.splice(i, 1);
     this.nav.clearPlant(plant.id);
     // Neighbors may have shared cells with this plant; restore their claim.
-    for (const p of this.plants) {
-      if (Math.hypot(p.x - plant.x, p.z - plant.z) < 3) {
-        this.nav.setPlant(p.id, p.x, p.z, PLANTS[p.type].radius, this.plantPathCost(p.type));
-      }
-    }
+    this.remarkNear(plant);
     this.fieldDirty = true;
   }
 
@@ -730,7 +767,7 @@ export class Game {
   private plantPathCost(type: PlantId): number {
     const def = PLANTS[type];
     const chewSeconds = def.hp / NOMINAL_CHEW_DPS;
-    const cellsAcross = (2 * def.radius) / CELL;
+    const cellsAcross = thicknessAcross(type) / CELL;
     return (chewSeconds * NOMINAL_SPEED) / cellsAcross;
   }
 

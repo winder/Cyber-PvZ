@@ -4,6 +4,7 @@ import {
   ABILITIES, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId,
 } from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
+import { isRotatable } from './sim/shapes';
 import { RtsCamera } from './render/camera';
 import { Renderer } from './render/renderer';
 import { createWorld } from './render/world';
@@ -22,6 +23,9 @@ const ui = {
   selectedCard: null as PlantId | null,
   aiming: null as AbilityId | null,
   selectedPlant: null as number | null,
+  /** Which way new walls face, and the wall just placed (so ↻ can turn it). */
+  placeAngle: 0,
+  lastWall: null as number | null,
   paused: false,
   speed: 1,
   started: false,
@@ -102,6 +106,7 @@ function makeHud(): Hud {
     onCard(id) {
       audio.play('click');
       ui.selectedPlant = null;
+      ui.lastWall = null;
       ui.selectedCard = ui.selectedCard === id ? null : id;
       if (!ui.selectedCard) renderer.setGhost(null);
     },
@@ -124,6 +129,7 @@ function makeHud(): Hud {
     onGo() {
       ui.selectedCard = null;
       ui.selectedPlant = null;
+      ui.lastWall = null;
       renderer.setGhost(null);
       game.startWave();
     },
@@ -133,6 +139,9 @@ function makeHud(): Hud {
     },
     onCancelSell() {
       ui.selectedPlant = null;
+    },
+    onRotate() {
+      rotate();
     },
     onPause() {
       ui.paused = !ui.paused;
@@ -160,6 +169,45 @@ function makeHud(): Hud {
   });
 }
 
+/** Walls turn in 45° steps (after 180° a wall looks the same, so 4 directions). */
+const TURN = Math.PI / 4;
+
+function canRotate(): boolean {
+  if (game.phase !== 'build') return false;
+  if (ui.selectedPlant !== null) {
+    const p = game.plants.find((pl) => pl.id === ui.selectedPlant);
+    return !!p && isRotatable(p.type);
+  }
+  return !!ui.selectedCard && isRotatable(ui.selectedCard);
+}
+
+/**
+ * ↻ / R: turn the selected wall; or, while placing walls, turn the next one
+ * (and the one just placed, so on a tablet you can tap, then turn it).
+ */
+function rotate(): void {
+  if (!canRotate()) return;
+  if (ui.selectedPlant !== null) {
+    const p = game.plants.find((pl) => pl.id === ui.selectedPlant)!;
+    const r = game.rotatePlant(p.id, (p.angle + TURN) % Math.PI);
+    if (!r.ok) {
+      hud.toast(r.reason);
+      audio.play('error');
+      return;
+    }
+    ui.placeAngle = p.angle;
+    audio.play('click');
+    return;
+  }
+  ui.placeAngle = (ui.placeAngle + TURN) % Math.PI;
+  if (ui.lastWall !== null) {
+    const r = game.rotatePlant(ui.lastWall, ui.placeAngle);
+    if (!r.ok) hud.toast(r.reason);
+  }
+  if (lastHover) handleHover(lastHover.px, lastHover.py);
+  audio.play('click');
+}
+
 function handleTap(px: number, py: number): void {
   const pt = camera.groundPoint(px, py);
   if (!pt) return;
@@ -180,7 +228,8 @@ function handleTap(px: number, py: number): void {
   if (game.phase !== 'build') return;
 
   if (ui.selectedCard) {
-    const r = game.place(ui.selectedCard, pt.x, pt.z);
+    const r = game.place(ui.selectedCard, pt.x, pt.z, ui.placeAngle);
+    ui.lastWall = r.ok && isRotatable(r.plant.type) ? r.plant.id : null;
     if (!r.ok) {
       hud.toast(r.reason);
       audio.play('error');
@@ -192,16 +241,20 @@ function handleTap(px: number, py: number): void {
     return;
   }
 
+  ui.lastWall = null;
   const plant = game.plantAt(pt.x, pt.z);
   ui.selectedPlant = plant ? plant.id : null;
   if (plant) audio.play('click');
 }
 
+let lastHover: { px: number; py: number } | null = null;
+
 function handleHover(px: number, py: number): void {
+  lastHover = { px, py };
   const pt = camera.groundPoint(px, py);
   if (!pt) return;
   if (ui.selectedCard && game.phase === 'build') {
-    renderer.setGhost(ui.selectedCard, pt.x, pt.z, game.canPlace(ui.selectedCard, pt.x, pt.z).ok);
+    renderer.setGhost(ui.selectedCard, pt.x, pt.z, game.canPlace(ui.selectedCard, pt.x, pt.z, ui.placeAngle).ok, ui.placeAngle);
   } else {
     renderer.setGhost(null);
   }
@@ -296,6 +349,8 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
   } else if (e.key === 'f') {
     ui.speed = ui.speed === 1 ? 2 : 1;
+  } else if (e.key === 'r' || e.key === 'R') {
+    rotate();
   } else if (e.key === 'Escape') {
     ui.selectedCard = null;
     ui.selectedPlant = null;
@@ -348,7 +403,7 @@ engine.runRenderLoop(() => {
     renderer.setAim(false);
   }
 
-  hud.update({ ...ui, heading: camera.heading, muted: audio.muted });
+  hud.update({ ...ui, heading: camera.heading, muted: audio.muted, canRotate: canRotate() });
   minimap.draw({ x: camera.target.x, z: camera.target.z, radius: camera.camera.radius, heading: camera.heading });
   world.scene.render();
 });

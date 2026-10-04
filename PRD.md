@@ -79,7 +79,7 @@ address). Each level has its own map, color theme, and waves.
 |---|---|---|
 | Solar Flower | Economy | Makes sun during battle |
 | Laser Peashooter | Damage | Hits ground **and** air |
-| Force-Field Nut | Wall | Lots of health, blocks zombies |
+| Force-Field Nut | Wall | A long wall (3.2 × 0.9) with lots of health. Turn it in 45° steps to steer zombies |
 | Cryo-Pea | Control | Damages and slows; hits ground and air |
 
 Each unit has `canHitGround` / `canHitAir` stats so a dedicated anti-air plant
@@ -126,6 +126,11 @@ Cost sun, have a cooldown, require the Spaceship to be standing.
 - A short tap/click is an action; moving past a small threshold makes it a drag.
 - Tap a plant card, then tap the ground to place. Tap a placed plant (build
   phase) to sell it.
+- Walls turn 45° at a time with the **↻ Turn** button (or **R**). While
+  placing walls, it turns the next wall and the one just placed (handy on a
+  tablet: tap to place, then turn it). With a placed wall selected, it turns
+  that wall. Use walls to build funnels and mazes that route zombies past
+  your lasers.
 - **Minimap** in the corner shows the map, units and the camera; tap it to jump.
 - Landscape layout.
 
