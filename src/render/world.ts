@@ -4,6 +4,7 @@ import {
 } from '@babylonjs/core';
 import { type EdgeId, type LevelDef } from '../data/config';
 import { buildCarWreck, createRuinedCity, type Decor } from './decor';
+import { streetTexture } from './streetTexture';
 import { RAVINE_DEPTH, Terrain } from './terrain';
 import { Materials } from './visuals';
 
@@ -53,7 +54,9 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   }, scene);
   const positions = ground.getVerticesData(VertexBuffer.PositionKind)!;
   const colors: number[] = [];
-  const top = hex(theme.ground), deep = hex(theme.ravine);
+  // A painted street is lit as-is (white), and still darkens down in the ravines.
+  const painted = theme.groundStyle === 'cityStreet';
+  const top = painted ? Color3.White() : hex(theme.ground), deep = hex(theme.ravine);
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], z = positions[i + 2];
     const y = terrain.terrainHeight(x, z);
@@ -72,7 +75,17 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   const earth = new StandardMaterial('terrain', scene);
   earth.diffuseColor = Color3.White(); // vertex colors do the shading
   earth.specularColor = new Color3(0.04, 0.04, 0.05);
-  earth.emissiveColor = top.scale(0.12);
+  earth.emissiveColor = painted ? new Color3(0.05, 0.035, 0.025) : top.scale(0.12);
+  if (painted) {
+    earth.diffuseTexture = streetTexture(scene, map);
+    // Texture covers the whole map: u runs west→east, v south→north.
+    const uv = ground.getVerticesData(VertexBuffer.UVKind)!;
+    for (let i = 0, v = 0; i < positions.length; i += 3, v += 2) {
+      uv[v] = (positions[i] + map.width / 2) / map.width;
+      uv[v + 1] = (positions[i + 2] + map.depth / 2) / map.depth;
+    }
+    ground.setVerticesData(VertexBuffer.UVKind, uv);
+  }
   ground.material = earth;
   ground.isPickable = false;
 
@@ -137,7 +150,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     edgeMarkers[edge] = strip;
   }
 
-  const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, top) : undefined;
+  const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground)) : undefined;
 
   return { scene, mats, ground, glow, edgeMarkers, terrain, decor };
 }

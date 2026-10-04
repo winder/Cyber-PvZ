@@ -12,7 +12,7 @@ for (const level of LEVELS) {
     it('has hills (gentle or rolling) but nothing extreme', () => {
       const hs: number[] = [];
       for (let x = -hw + 2; x <= hw - 2; x += 3) for (let z = -hd + 2; z <= hd - 2; z += 3) hs.push(terrain.surfaceHeight(x, z));
-      expect(Math.max(...hs) - Math.min(...hs)).toBeGreaterThan(map.hills > 0 ? 0.8 : -1);
+      expect(Math.max(...hs) - Math.min(...hs)).toBeGreaterThan(1.6 * map.hills);
       expect(Math.max(...hs.map(Math.abs))).toBeLessThan(4);
     });
 

@@ -61,12 +61,16 @@ address). Each level has its own map, color theme, and waves.
    ravines wall off both sides; zombies from the sides can only get in
    through a gap (north: just east of the Spaceship; south: between the
    Spaceship and the Power Plant) or round the far east ends.
-   Scenery: crumbling skyscrapers line both sides, with alleys between them
-   that side waves pour out of; the row between the camera and the corridor
-   sinks to ground-floor ruins so it never blocks the view. Burnt-out car
-   wrecks (smouldering, smoking) stand in for boulders. Old street lamps glow
-   a sickly nuclear green, flickering lazily, and frantically while ZomWes
-   8000 is on the field. Tumbleweeds blow down the corridor.
+   Scenery: the corridor is a ruined city street: cracked asphalt with worn
+   double yellow lines, curbs and paved sidewalks under blown orange dust.
+   Gutted brick buildings line both sides (empty window grids, dark
+   interiors, stone cornices, broken tops, rubble), with alleys between them
+   that side waves pour out of; the row between the camera and the street
+   sinks to ground-floor ruins so it never blocks the view. Burnt-out sedans
+   (smouldering, smoking) stand in for boulders. Curved iron street lamps
+   glow warm amber, flickering lazily, and frantically while ZomWes 8000 is
+   on the field. Hydrants, bins, tumbleweeds, a skyline lost in the haze,
+   and a low swollen sun.
 
 ## Map (Neon Grid)
 

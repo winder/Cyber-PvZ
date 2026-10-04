@@ -374,7 +374,7 @@ const NEON_MAP: MapDef = {
 const RUST_MAP: MapDef = {
   width: 84,
   depth: 32,
-  hills: 0.5,
+  hills: 0.15, // a (mostly) flat street
   structures: [
     { id: 'greenhouse', x: -34, z: 0 },
     { id: 'powerPlant', x: -23, z: 0 },
@@ -431,6 +431,8 @@ export interface ThemeDef {
   rocks?: 'boulder' | 'carWreck';
   /** Extra scenery: ruined skyscrapers, flickering street lamps, tumbleweeds. */
   decor?: 'ruinedCity';
+  /** A painted ground instead of plain colors (asphalt street, sidewalks, rubble). */
+  groundStyle?: 'cityStreet';
 }
 
 const NEON_THEME: ThemeDef = {
@@ -452,22 +454,23 @@ const NEON_THEME: ThemeDef = {
 
 /** Dusty, sun-scorched wasteland under an orange haze. */
 const RUST_THEME: ThemeDef = {
-  sky: '#c98b58',
-  fog: '#cf9866',
-  fogDensity: 0.011,
+  sky: '#c2702f',
+  fog: '#c4783a',
+  fogDensity: 0.014,
   ground: '#b88552',
-  ravine: '#2a140a',
-  light: '#ffe6c8',
-  lightIntensity: 1.05,
+  ravine: '#24120a',
+  light: '#ffd2a0',
+  lightIntensity: 1.0,
   bounce: '#6b3a1e',
-  sun: '#ffd49a',
-  sunIntensity: 0.95,
+  sun: '#ffc27a',
+  sunIntensity: 0.9,
   rock: '#7a4a30',
   rockEdge: '#c27038',
   border: '#7a3b1a',
   glow: 0.55,
   rocks: 'carWreck',
   decor: 'ruinedCity',
+  groundStyle: 'cityStreet',
 };
 
 // ---------------------------------------------------------------------------
