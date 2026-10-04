@@ -63,7 +63,8 @@ export class RtsCamera {
     private cb: CameraCallbacks,
     private terrain: Terrain,
   ) {
-    this.camera = new ArcRotateCamera('cam', NORTH, TILT, 26, new Vector3(-8, 0, 0), scene);
+    const view = terrain.map.view ?? { x: -8, z: 0 };
+    this.camera = new ArcRotateCamera('cam', NORTH, TILT, 26, new Vector3(view.x, 0, view.z), scene);
     this.camera.inputs.clear();
     this.camera.minZ = 0.5;
     this.camera.maxZ = 400;

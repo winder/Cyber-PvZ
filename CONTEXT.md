@@ -8,7 +8,8 @@ behind these terms are in [docs/adr/](docs/adr/).
 
 **Level** — One playable stage: a **Map**, a **Theme** and a list of
 **Waves**. Picked on the title screen or with `?level=` in the address.
-Currently *Neon Grid* (1) and *Rust Corridor* (2). Code: `LevelDef`.
+Currently *Neon Grid* (1), *Rust Corridor* (2) and *Cyber Cemetery* (3).
+Code: `LevelDef`.
 
 **Wave** — One round of zombies. A level has 5; the last is the **final
 wave**, where the **Boss** appears. Each wave is a list of **Spawn groups**
@@ -47,7 +48,13 @@ for walls. Used for placement checks and for which **Nav cells** it blocks.
 Code: `src/sim/shapes.ts`.
 
 **Rock** — An obstacle zombies and plants can't use. On Rust Corridor rocks
-are drawn as **Car wrecks**; the rules don't change.
+are drawn as **Car wrecks**, on Cyber Cemetery as **Tombstones** (in rows);
+the rules don't change. A rock can carry a `look` to be drawn as a landmark
+instead, like the **Gazebo**. Code: `Rock`.
+
+**Mound** — One big hill raised out of the ground, flat on top (Cyber
+Cemetery's gazebo hill). Looks only: zombies walk over it as if it were flat.
+Code: `MapDef.mound`.
 
 **Ravine** — A trench carved into the ground that nothing can cross except
 flyers and **Giants**. Its visible hole always stays inside its rectangular
@@ -126,7 +133,15 @@ the new default.
 are drawn, the ground style and **Decor**. Code: `ThemeDef`.
 
 **Decor** — Animated scenery that doesn't affect play: Rust Corridor's ruined
-city (buildings, lamps, tumbleweeds, skyline). Code: `src/render/decor.ts`.
+city (buildings, lamps, tumbleweeds, skyline), and Cyber Cemetery's graveyard
+(neon **Fence**, **Gazebo**, ghosts rising from graves, slime, haunted houses
+under a big moon). Code: `src/render/decor.ts`, `src/render/graveyard.ts`.
+
+**Fence** — Cyber Cemetery's border: iron posts strung with humming neon
+beams, with a broken gate at the back where the zombies come in.
+
+**Gazebo** — The creepy gazebo on top of Cyber Cemetery's mound: an open
+coffin, a swinging lantern, a red beacon. To the rules it's a rock.
 
 **Cutaway** — The row of buildings between the camera and the street sinks
 to ground-floor ruins so it never hides the game.
@@ -134,7 +149,8 @@ to ground-floor ruins so it never hides the game.
 **Collapse** — A Rust Corridor building coming down: it sinks and leans
 into the street in a cloud of dust, throwing bricks that stay as rubble.
 Set off by a **Giant**'s stomp or an Orbital Laser Strike near the street's
-edge, and by ZomWes's entrance. Looks only. Code: `Decor.crumble`.
+edge, and by ZomWes's entrance. On Cyber Cemetery the same moments knock
+tombstones flat instead. Looks only. Code: `Decor.crumble`.
 
 **Weather** — A dust storm (Rust Corridor) or thunderstorm (Neon Grid) that
 rolls in partway through chosen waves: thicker haze, blowing dust or rain,

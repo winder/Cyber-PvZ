@@ -4,6 +4,7 @@ import {
 } from '@babylonjs/core';
 import { type EdgeId, type LevelDef } from '../data/config';
 import { buildCarWreck, createRuinedCity, type Decor } from './decor';
+import { buildTombstones, createGraveyard } from './graveyard';
 import { streetTexture } from './streetTexture';
 import { RAVINE_DEPTH, Terrain } from './terrain';
 import { Materials } from './visuals';
@@ -115,7 +116,11 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   }, scene);
   border.color = hex(theme.border);
 
+  // Tombstones are drawn all together (thin instances); landmarks like the
+  // gazebo are drawn by the decor.
+  const tombstones = theme.rocks === 'tombstone' ? buildTombstones(scene, map.rocks.filter((r) => !r.look), terrain) : undefined;
   for (const [i, r] of map.rocks.entries()) {
+    if (r.look || tombstones) continue;
     if (theme.rocks === 'carWreck') {
       // Burnt-out car husks instead of boulders, sat a little into the dirt.
       const car = buildCarWreck(scene, `wreck${i}`, r.r, 100 + i);
@@ -155,7 +160,9 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     edgeMarkers[edge] = strip;
   }
 
-  const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground)) : undefined;
+  const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground))
+    : theme.decor === 'graveyard' ? createGraveyard(scene, map, terrain, glow, hex(theme.ground), hex(theme.fog), tombstones)
+    : undefined;
 
   const setLighting = (scale: number, flash: number) => {
     hemi.intensity = theme.lightIntensity * scale + flash * 2.5;

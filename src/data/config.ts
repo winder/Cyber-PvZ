@@ -314,6 +314,8 @@ export const ECONOMY = {
 
 export interface Rect { x: number; z: number; w: number; d: number }
 export interface Circle { x: number; z: number; r: number }
+/** A rock. `look` draws a landmark in its place (same rules: nothing gets through). */
+export interface Rock extends Circle { look?: 'gazebo' }
 
 export interface MapDef {
   width: number;
@@ -321,7 +323,7 @@ export interface MapDef {
   /** How tall the rolling hills are (1 = normal, 0 = flat). */
   hills: number;
   structures: { id: StructureId; x: number; z: number }[];
-  rocks: Circle[];
+  rocks: Rock[];
   /** Sheer-sided trenches cut into the ground. Nothing can cross them (except giants). */
   ravines: Rect[];
   /** Where each edge's spawn zone is (range along that edge). */
@@ -331,6 +333,10 @@ export interface MapDef {
    * one of these (positions along the edge) instead of anywhere in its range.
    */
   alleys?: Partial<Record<EdgeId, number[]>>;
+  /** One big hill raised out of the ground, flat on top. Looks only: zombies walk over it. */
+  mound?: { x: number; z: number; r: number; height: number };
+  /** Where the camera starts looking (default: a little west of the middle). */
+  view?: { x: number; z: number };
 }
 
 /** Level 1: open ground, bases spread out. */
@@ -406,6 +412,79 @@ const RUST_MAP: MapDef = {
   },
 };
 
+/**
+ * Level 3: a graveyard. Zombies only come in through the gate at the back
+ * (north). Two long ravines fold the way into an S, with a short stub off
+ * each: west past the gate, east across the middle past the big hill (with
+ * the gazebo on top), then down at the east end onto the bases, which stand
+ * in a row along the front. So the horde meets them in order: Spaceship,
+ * Power Plant, then the Greenhouse.
+ */
+const GRAVE_RAVINES: Rect[] = [
+  // Back wall, gap at the west end.
+  { x: 6, z: 15.5, w: 44, d: 3 },
+  // A stub off it, so the way west zigzags up past the gate.
+  { x: -9, z: 19, w: 3, d: 5 },
+  // Front wall, gap at the east end.
+  { x: -6, z: -8, w: 44, d: 3 },
+  // A stub off it, so the way east bends up and round.
+  { x: 12.5, z: -3.5, w: 3, d: 7 },
+];
+const GRAVE_MOUND = { x: -1, z: 4, r: 8.5, height: 3.6 };
+const GRAVE_STRUCTURES: MapDef['structures'] = [
+  { id: 'greenhouse', x: -5, z: -17 },
+  { id: 'powerPlant', x: 8, z: -17 },
+  { id: 'spaceship', x: 20, z: -17 },
+];
+const GRAVE_GATE = { from: -4, to: 6 };
+
+/**
+ * Tombstones in rows (rocks), with gaps zombies can slip through. Rows stay
+ * clear of ravines, bases, the gazebo and the gate; a few graves are missing.
+ */
+function tombstoneRows(): Rock[] {
+  const rows = [23, 20, 12.5, 9.5, 6, 2.5, -1, -4.5, -12, -15.5, -19, -22.5];
+  const out: Rock[] = [];
+  let n = 0;
+  for (const z0 of rows) {
+    for (let x0 = -26.4; x0 <= 26.41; x0 += 2.4) {
+      n++;
+      // Seeded jitter: graves settle a little out of line over the years.
+      const k = Math.sin(n * 12.9898) * 43758.5453;
+      const r1 = k - Math.floor(k), r2 = (k * 7.13) - Math.floor(k * 7.13);
+      if (r1 < 0.16) continue; // a missing grave
+      const x = x0 + (r2 - 0.5) * 0.4, z = z0 + (r1 - 0.5) * 0.3;
+      const nearRavine = GRAVE_RAVINES.some((r) => Math.abs(x - r.x) < r.w / 2 + 1.2 && Math.abs(z - r.z) < r.d / 2 + 1.2);
+      const nearBase = GRAVE_STRUCTURES.some((s) => Math.hypot(x - s.x, z - s.z) < STRUCTURES[s.id].radius + 3.5);
+      const onHilltop = Math.hypot(x - GRAVE_MOUND.x, z - GRAVE_MOUND.z) < 4;
+      const atGate = x > GRAVE_GATE.from - 2.5 && x < GRAVE_GATE.to + 2.5 && z > 21.5;
+      if (nearRavine || nearBase || onHilltop || atGate) continue;
+      out.push({ x, z, r: 0.55 });
+    }
+  }
+  return out;
+}
+
+const GRAVEYARD_MAP: MapDef = {
+  width: 56,
+  depth: 50,
+  hills: 0.35,
+  structures: GRAVE_STRUCTURES,
+  rocks: [
+    { x: GRAVE_MOUND.x, z: GRAVE_MOUND.z, r: 2.6, look: 'gazebo' },
+    ...tombstoneRows(),
+  ],
+  ravines: GRAVE_RAVINES,
+  edges: {
+    north: GRAVE_GATE,
+    east: { from: -4, to: 4 },
+    south: { from: -6, to: 6 },
+    west: { from: -4, to: 4 },
+  },
+  mound: GRAVE_MOUND,
+  view: { x: 4, z: -7 },
+};
+
 // ---------------------------------------------------------------------------
 //  THEMES: the look of a level. Colors are hex strings.
 // ---------------------------------------------------------------------------
@@ -427,10 +506,13 @@ export interface ThemeDef {
   rockEdge: string;
   border: string;
   glow: number;
-  /** How rocks look: plain boulders, or burnt-out car wrecks. */
-  rocks?: 'boulder' | 'carWreck';
-  /** Extra scenery: ruined skyscrapers, flickering street lamps, tumbleweeds. */
-  decor?: 'ruinedCity';
+  /** How rocks look: plain boulders, burnt-out car wrecks, or tombstones. */
+  rocks?: 'boulder' | 'carWreck' | 'tombstone';
+  /**
+   * Extra scenery: the ruined city (skyscrapers, street lamps, tumbleweeds),
+   * or the graveyard (neon fence, gazebo, ghosts, slime, haunted houses, moon).
+   */
+  decor?: 'ruinedCity' | 'graveyard';
   /** A painted ground instead of plain colors (asphalt street, sidewalks, rubble). */
   groundStyle?: 'cityStreet';
   /** Weather that rolls in partway through some waves. Looks only: the rules don't change. */
@@ -485,6 +567,27 @@ const RUST_THEME: ThemeDef = {
   weather: { kind: 'dustStorm', waves: [3, 5], after: 8 },
 };
 
+/** Moonlit night in a graveyard: blue-black sky, cold light, a low mist. */
+const GRAVEYARD_THEME: ThemeDef = {
+  sky: '#070b1c',
+  fog: '#070b1c',
+  fogDensity: 0.011,
+  ground: '#1e3326',
+  ravine: '#010304',
+  light: '#9fb4ff',
+  lightIntensity: 0.6,
+  bounce: '#12202a',
+  sun: '#b9c8ff',
+  sunIntensity: 0.55,
+  rock: '#6b7280',
+  rockEdge: '#4dc3ff',
+  border: '#3d9bff',
+  glow: 0.8,
+  rocks: 'tombstone',
+  decor: 'graveyard',
+  weather: { kind: 'thunderstorm', waves: [5], after: 10 },
+};
+
 // ---------------------------------------------------------------------------
 //  WAVES
 //  Each group spawns `count` zombies of `zombie` from `edge`, one every
@@ -530,6 +633,9 @@ export const WAVES: SpawnGroup[][] = [
   ],
 ];
 
+/** The same waves, but every zombie comes in through the back gate. */
+const GRAVEYARD_WAVES: SpawnGroup[][] = WAVES.map((wave) => wave.map((g) => ({ ...g, edge: 'north' })));
+
 // ---------------------------------------------------------------------------
 //  LEVELS
 // ---------------------------------------------------------------------------
@@ -562,6 +668,15 @@ export const LEVELS: LevelDef[] = [
     map: RUST_MAP,
     theme: RUST_THEME,
     waves: WAVES,
+  },
+  {
+    id: 'graveyard',
+    name: 'Cyber Cemetery',
+    icon: '🪦',
+    description: 'A haunted graveyard at night. Zombies only come in the back gate.',
+    map: GRAVEYARD_MAP,
+    theme: GRAVEYARD_THEME,
+    waves: GRAVEYARD_WAVES,
   },
 ];
 

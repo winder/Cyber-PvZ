@@ -47,6 +47,8 @@ export interface Zombie {
   /** Bodyguards: the zombie they escort (by id) and their place in the formation. */
   leader: number | null;
   slot: number;
+  /** Seconds a bodyguard keeps to the normal route after finding its straight way blocked. */
+  detour: number;
 }
 
 export interface Structure {
@@ -57,6 +59,9 @@ export interface Structure {
   hp: number;
   alive: boolean;
 }
+
+/** How long a bodyguard follows the normal route round an obstacle before trying the straight way again. */
+const ESCORT_DETOUR = 2;
 
 export interface Strike { x: number; z: number; timer: number }
 
@@ -376,7 +381,7 @@ export class Game {
     const zombie: Zombie = {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
-      leader: null, slot: 0,
+      leader: null, slot: 0, detour: 0,
     };
     this.zombies.push(zombie);
     return zombie;
@@ -538,11 +543,15 @@ export class Game {
     }
     const step = Math.min(dist, speed * DT);
     const nx = zb.x + (dx / dist) * step, nz = zb.z + (dz / dist) * step;
-    if (!this.nav.blocked[this.nav.cellOf(nx, nz)]) {
+    if (zb.detour > 0) zb.detour -= DT;
+    else if (!this.nav.blocked[this.nav.cellOf(nx, nz)]) {
       zb.x = nx;
       zb.z = nz;
       zb.facing = Math.atan2(dz, dx);
       return;
+    } else {
+      // Keep to the route for a while, or it would step back to the rim and stick there.
+      zb.detour = ESCORT_DETOUR;
     }
     // Ravine or rock in the way: take the normal route (it heads the same way the boss does).
     const next = this.nav.bestStep(this.nav.cellOf(zb.x, zb.z));

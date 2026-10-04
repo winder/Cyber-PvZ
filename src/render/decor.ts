@@ -22,7 +22,7 @@ export interface Decor {
 }
 
 /** Seeded random numbers so the city looks the same every time. */
-function rng(seed: number): () => number {
+export function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -32,7 +32,7 @@ function rng(seed: number): () => number {
   };
 }
 
-function hash(n: number, seed: number): number {
+export function hash(n: number, seed: number): number {
   let h = Math.imul(n ^ (seed * 374761393), 668265263);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
@@ -42,7 +42,7 @@ function hash(n: number, seed: number): number {
 //  Textures, drawn in code
 // ----------------------------------------------------------------------------
 
-function canvasTexture(scene: Scene, name: string, w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, mips = true): DynamicTexture {
+export function canvasTexture(scene: Scene, name: string, w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, mips = true): DynamicTexture {
   const tex = new DynamicTexture(name, { width: w, height: h }, scene, mips);
   draw(tex.getContext() as unknown as CanvasRenderingContext2D);
   tex.update(true);
@@ -195,7 +195,7 @@ function tileUVs(mesh: Mesh, su: number, sv: number): void {
   mesh.setVerticesData(VertexBuffer.UVKind, uvs);
 }
 
-function material(scene: Scene, name: string, make: (m: StandardMaterial) => void): StandardMaterial {
+export function material(scene: Scene, name: string, make: (m: StandardMaterial) => void): StandardMaterial {
   const existing = scene.getMaterialByName(name) as StandardMaterial | null;
   if (existing) return existing;
   const m = new StandardMaterial(name, scene);
@@ -204,7 +204,7 @@ function material(scene: Scene, name: string, make: (m: StandardMaterial) => voi
   return m;
 }
 
-function merge(meshes: Mesh[], mat: StandardMaterial, name: string): Mesh | null {
+export function merge(meshes: Mesh[], mat: StandardMaterial, name: string): Mesh | null {
   if (meshes.length === 0) return null;
   const m = Mesh.MergeMeshes(meshes, true, true)!;
   m.name = name;
@@ -508,7 +508,7 @@ function outerLines(half: number): number[] {
  * far enough that its edge is swallowed by the fog, with no sky showing
  * between the street and the buildings or skyline.
  */
-function buildOuterGround(scene: Scene, map: MapDef, terrain: Terrain, color: Color3): void {
+export function buildOuterGround(scene: Scene, map: MapDef, terrain: Terrain, color: Color3): void {
   const xs = outerLines(map.width / 2), zs = outerLines(map.depth / 2).reverse();
   const positions: number[] = [], indices: number[] = [], uvs: number[] = [];
   for (const z of zs) {

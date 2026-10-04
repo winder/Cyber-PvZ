@@ -37,13 +37,23 @@ export class Terrain {
 
   constructor(readonly map: MapDef) {
     this.pads = map.structures.map((s) => ({
-      x: s.x, z: s.z, r: STRUCTURES[s.id].radius, h: hills(s.x, s.z) * map.hills,
+      x: s.x, z: s.z, r: STRUCTURES[s.id].radius, h: this.natural(s.x, s.z),
     }));
+  }
+
+  /** Rolling hills, and the map's big hill (mound) if it has one. */
+  private natural(x: number, z: number): number {
+    const h = hills(x, z) * this.map.hills;
+    const m = this.map.mound;
+    if (!m) return h;
+    // Rises out of the hills to a flat top a third of its width across.
+    const up = 1 - smoothstep(m.r * 0.32, m.r, Math.hypot(x - m.x, z - m.z));
+    return h + (m.height - h) * up;
   }
 
   /** Ground height ignoring ravines (what flyers and giants pass over). */
   surfaceHeight(x: number, z: number): number {
-    let h = hills(x, z) * this.map.hills;
+    let h = this.natural(x, z);
     // Flatten into a level pad under each base, blending out smoothly.
     for (const p of this.pads) {
       const t = smoothstep(p.r + 1.5, p.r + 6, Math.hypot(x - p.x, z - p.z));
