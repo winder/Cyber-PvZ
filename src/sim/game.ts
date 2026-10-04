@@ -41,6 +41,9 @@ export interface Zombie {
   wanderBelow: number;
   /** When each base was last targeted (tick number), so wanderers tour them all. */
   visited: number[];
+  /** Bodyguards: the zombie they escort (by id) and their place in the formation. */
+  leader: number | null;
+  slot: number;
 }
 
 export interface Structure {
@@ -242,6 +245,9 @@ export class Game {
       const line = lines.find((l) => l.edge === g.edge && l.zombie === g.zombie);
       if (line) line.count += g.count;
       else lines.push({ edge: g.edge, zombie: g.zombie, count: g.count });
+      // Bodyguards come along too.
+      const guards = ZOMBIES[g.zombie].guards;
+      if (guards) lines.push({ edge: g.edge, zombie: guards.zombie, count: g.count * guards.count });
     }
     return lines;
   }
@@ -300,13 +306,38 @@ export class Game {
       else { x = t; z = -hd; }
       if (!this.nav.blocked[this.nav.cellOf(x, z)]) break;
     }
+    const zombie = this.addZombie(type, x, z);
+    if (ZOMBIES[type].boss) this.events.push({ t: 'bossSpawn', type });
+    // Bodyguards appear around it, already in formation.
+    const guards = ZOMBIES[type].guards;
+    if (guards) {
+      for (let k = 0; k < guards.count; k++) {
+        const p = this.escortSlot(zombie, k, guards.zombie);
+        const gx = Math.max(-hw, Math.min(hw, p.x)), gz = Math.max(-hd, Math.min(hd, p.z));
+        const g = this.addZombie(guards.zombie, gx, gz);
+        g.leader = zombie.id;
+        g.slot = k;
+      }
+    }
+    return zombie;
+  }
+
+  private addZombie(type: ZombieId, x: number, z: number): Zombie {
     const zombie: Zombie = {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
+      leader: null, slot: 0,
     };
     this.zombies.push(zombie);
-    if (ZOMBIES[type].boss) this.events.push({ t: 'bossSpawn', type });
     return zombie;
+  }
+
+  /** Where bodyguard number `slot` stands: beside the leader's left, right, and behind. */
+  private escortSlot(leader: Zombie, slot: number, guardType: ZombieId): { x: number; z: number } {
+    const angles = [1.3, -1.3, Math.PI];
+    const a = leader.facing + angles[slot % angles.length];
+    const d = ZOMBIES[leader.type].radius + ZOMBIES[guardType].radius + 1.6 + Math.floor(slot / angles.length) * 2;
+    return { x: leader.x + Math.cos(a) * d, z: leader.z + Math.sin(a) * d };
   }
 
   private updatePlants(): void {
@@ -365,6 +396,15 @@ export class Game {
         continue;
       }
 
+      if (zb.leader !== null) {
+        const leader = this.zombies.find((o) => o.id === zb.leader && o.hp > 0);
+        if (leader) {
+          this.updateEscort(zb, leader, speed);
+          continue;
+        }
+        zb.leader = null; // the boss is gone: carry on alone
+      }
+
       const target = this.nearestStructure(zb.x, zb.z);
       if (!target) continue;
       const reach = STRUCTURES[target.type].radius + def.radius + 0.25;
@@ -391,19 +431,72 @@ export class Game {
       if (plantId >= 0 && plantId !== this.nav.plantAt[cell]) {
         const plant = this.plants.find((p) => p.id === plantId);
         if (plant && plant.hp > 0) {
-          zb.attacking = { kind: 'plant', id: plant.id };
-          zb.facing = Math.atan2(plant.z - zb.z, plant.x - zb.x);
-          plant.hp -= def.dps * DT;
-          if (this.chompTimer <= 0) {
-            this.chompTimer = 0.4;
-            this.events.push({ t: 'chomp', x: zb.x, z: zb.z });
-          }
+          this.attackPlant(zb, plant);
           continue;
         }
       }
       this.moveToward(zb, this.nav.centerX(next), this.nav.centerZ(next), speed * DT);
     }
     this.separateZombies();
+  }
+
+  /** Chew (or, with a sweeping weapon, slash everything in reach). */
+  private attackPlant(zb: Zombie, plant: Plant): void {
+    const def = ZOMBIES[zb.type];
+    zb.attacking = { kind: 'plant', id: plant.id };
+    zb.facing = Math.atan2(plant.z - zb.z, plant.x - zb.x);
+    if (def.sweep) {
+      for (const p of this.plants) {
+        if (Math.hypot(p.x - zb.x, p.z - zb.z) <= def.radius + def.sweep) p.hp -= def.dps * DT;
+      }
+    } else {
+      plant.hp -= def.dps * DT;
+    }
+    if (this.chompTimer <= 0) {
+      this.chompTimer = 0.4;
+      this.events.push({ t: 'chomp', x: zb.x, z: zb.z });
+    }
+  }
+
+  /**
+   * Bodyguards keep their place beside the leader, slashing plants and
+   * attacking bases within reach. Obstacles in the way? Path around them.
+   */
+  private updateEscort(zb: Zombie, leader: Zombie, speed: number): void {
+    const def = ZOMBIES[zb.type];
+
+    const base = this.nearestStructure(zb.x, zb.z);
+    if (base && Math.hypot(base.x - zb.x, base.z - zb.z) <= STRUCTURES[base.type].radius + def.radius + 0.25) {
+      zb.attacking = { kind: 'structure', index: base.index };
+      zb.facing = Math.atan2(base.z - zb.z, base.x - zb.x);
+      this.damageStructure(base, def.dps * DT);
+      return;
+    }
+
+    const plant = this.plants.find((p) => p.hp > 0 && Math.hypot(p.x - zb.x, p.z - zb.z) <= def.radius + PLANTS[p.type].radius + 0.6);
+    if (plant) {
+      this.attackPlant(zb, plant);
+      return;
+    }
+
+    const slot = this.escortSlot(leader, zb.slot, zb.type);
+    const dx = slot.x - zb.x, dz = slot.z - zb.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.3) {
+      zb.facing = leader.facing;
+      return;
+    }
+    const step = Math.min(dist, speed * DT);
+    const nx = zb.x + (dx / dist) * step, nz = zb.z + (dz / dist) * step;
+    if (!this.nav.blocked[this.nav.cellOf(nx, nz)]) {
+      zb.x = nx;
+      zb.z = nz;
+      zb.facing = Math.atan2(dz, dx);
+      return;
+    }
+    // Ravine or rock in the way: take the normal route (it heads the same way the boss does).
+    const next = this.nav.bestStep(this.nav.cellOf(zb.x, zb.z));
+    if (next >= 0) this.moveToward(zb, this.nav.centerX(next), this.nav.centerZ(next), speed * DT);
   }
 
   /** Giants pick a base, walk straight at it over anything, and stomp plants on the way. */

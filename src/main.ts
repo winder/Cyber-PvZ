@@ -213,7 +213,11 @@ function react(events: SimEvent[]): void {
         break;
       case 'bossSpawn':
         audio.play('bossRoar');
-        hud.toast(`⚠️ ${ZOMBIES[e.type].name} IS COMING! ⚠️`, 3500);
+        {
+          const guards = ZOMBIES[e.type].guards;
+          const escort = guards ? ` with ${guards.count} ${ZOMBIES[guards.zombie].name}s` : '';
+          hud.toast(`⚠️ ${ZOMBIES[e.type].name} IS COMING${escort}! ⚠️`, 3500);
+        }
         break;
       case 'stomp': audio.play('stomp'); break;
       case 'wander':

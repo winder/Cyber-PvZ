@@ -56,6 +56,50 @@ describe('ZomWes 8000', () => {
     expect(boss.x).toBeLessThan(10);
   });
 
+  it('arrives with 3 guardians who march beside him', () => {
+    const g = new Game();
+    g.phase = 'battle';
+    const boss = g.spawn('zomwes', 'east');
+    const guards = g.zombies.filter((z) => z.type === 'guardian');
+    expect(guards).toHaveLength(3);
+    for (let i = 0; i < TICK_RATE * 20; i++) g.step();
+    for (const gd of guards) expect(Math.hypot(gd.x - boss.x, gd.z - boss.z)).toBeLessThan(10);
+    expect(g.wavePreview).toBeDefined();
+  });
+
+  it('guardians carry on alone when he falls', () => {
+    const g = new Game();
+    g.phase = 'battle';
+    const boss = g.spawn('zomwes', 'east');
+    boss.hp = 0;
+    g.step();
+    const guard = g.zombies.find((z) => z.type === 'guardian')!;
+    const start = guard.x;
+    for (let i = 0; i < TICK_RATE * 10; i++) g.step();
+    expect(guard.leader).toBeNull();
+    expect(guard.x).toBeLessThan(start - 5); // heading for the bases
+  });
+
+  it('guardians slash every plant in reach', () => {
+    const g = new Game();
+    const a = g.place('forceNut', 0, 0), b = g.place('forceNut', 1.3, 0.6);
+    g.phase = 'battle';
+    g.spawn('zomwes', 'east');
+    const guard = g.zombies.find((z) => z.type === 'guardian')!;
+    guard.x = 1.5; guard.z = -1; // escorting, with two plants in reach
+    for (let i = 0; i < TICK_RATE * 2; i++) g.step();
+    if (a.ok && b.ok) {
+      expect(a.plant.hp).toBeLessThan(1500);
+      expect(b.plant.hp).toBeLessThan(1500);
+    }
+  });
+
+  it('shows the guardians in the final wave preview', () => {
+    const g = new Game();
+    g.wave = g.totalWaves - 1;
+    expect(g.wavePreview().find((l) => l.zombie === 'guardian')?.count).toBe(3);
+  });
+
   it('20 plants take him down easily', () => {
     const { boss, health } = bossFight(20);
     expect(boss.hp).toBeLessThanOrEqual(0);

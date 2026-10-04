@@ -11,6 +11,7 @@ import {
 import { skinUnits, type ModelId } from '../models/models';
 import { getCustomSkin } from '../skins';
 import { buildHair } from './hair';
+import { attachWeapon } from './weapons';
 
 /**
  * A thing drawn in the world. `root` is moved/rotated by the renderer.
@@ -381,6 +382,7 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
   const def = ZOMBIES[type];
   const scale = def.scale ?? 1;
   character.root.scaling.setAll(scale);
+  if (def.weapon) attachWeapon(scene, character, def.weapon, `${name}-weapon`);
   let update: Visual['update'];
   if (def.hair && character.joints.head) {
     const hair = hairTemplate(scene, def.hair, def.model!).createInstance(`${name}-hair`);

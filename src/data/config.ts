@@ -17,7 +17,7 @@
 import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
-export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes';
+export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
@@ -68,8 +68,14 @@ export interface ZombieDef {
   scale?: number;
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
+  /** Something held in the right hand. */
+  weapon?: 'scythe';
   /** Gets a boss health bar and announcements. */
   boss?: boolean;
+  /** Bodyguards that spawn alongside this zombie and escort it. */
+  guards?: { zombie: ZombieId; count: number };
+  /** Attacks hit every plant within this distance (a wide swing). */
+  sweep?: number;
   /**
    * Giant: walks in a straight line over rocks and ravines, stomping plants in
    * the way (hurting every plant within `stompRadius`).
@@ -193,6 +199,23 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     model: 'jetpackHumanoid',
     skin: 'skins/jetpack.png',
   },
+  // ZomWes 8000's bodyguards. They march beside him and slash plants near him.
+  guardian: {
+    name: 'Guardian',
+    icon: '🗡️',
+    hp: 400,
+    speed: 1.0,
+    dps: 25,
+    armor: 0.2,
+    flying: false,
+    radius: 0.7,
+    color: '#86cdea',
+    model: 'guardian',
+    skin: 'skins/guardian.png',
+    scale: 2,
+    weapon: 'scythe',
+    sweep: 2,
+  },
   // The final boss. Named after his creator.
   zomwes: {
     name: 'ZomWes 8000',
@@ -209,6 +232,7 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     scale: 9,
     hair: 'nest',
     boss: true,
+    guards: { zombie: 'guardian', count: 3 },
     giant: { stompRadius: 4 },
     wanderEvery: 0.25,
     wanderOn: 'base',

@@ -6,6 +6,7 @@ import { ZOMBIES, type ZombieId } from '../data/config';
 import { MODELS } from '../models/models';
 import { animate, assemble, buildPartMesh, skinMaterial, type BlockCharacter } from '../render/blockModel';
 import { buildHair } from '../render/hair';
+import { attachWeapon } from '../render/weapons';
 import { skinUnits } from '../models/models';
 import { clearCustomSkin, getCustomSkin, saveCustomSkin } from '../skins';
 import { faceAt, faceLabel, layoutFaces, mirrorPixel, type FaceInfo } from './faces';
@@ -335,6 +336,11 @@ function buildCharacter(id: ZombieId): void {
   character = assemble('character', scene, model, parts);
   // Hair isn't painted (it's 3D curls), but show it so you can see the look.
   // It's not pickable, so you can still paint the head underneath.
+  const weapon = ZOMBIES[id].weapon;
+  if (weapon) {
+    const w = attachWeapon(scene, character, weapon, 'weapon');
+    if (w) extras.push(...w.getChildMeshes());
+  }
   const kind = ZOMBIES[id].hair;
   if (kind && character.joints.head) {
     const hair = buildHair(scene, 'hair', kind, model);

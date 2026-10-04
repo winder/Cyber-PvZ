@@ -17,7 +17,7 @@ export type PartRole =
   | 'head' | 'body' | 'armR' | 'armL' | 'legR' | 'legL' | 'jetpack'
   | 'footR' | 'footL' | 'driverBody' | 'driverHead'
   | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL';
-export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot';
+export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -79,6 +79,15 @@ export const MODELS: Record<ModelId, ModelDef> = {
       // Uses the spare corner of the skin (where Minecraft keeps the left-arm overlay).
       { role: 'jetpack', label: 'Jetpack', size: [5, 13, 3], uv: [48, 48], pivot: [0, 22, -2], offset: [0, 0, -1.5] },
     ],
+  },
+  // ZomWes 8000's bodyguards: a humanoid holding a scythe upright in its right
+  // hand, left arm across the body. Same skin layout as the humanoid.
+  guardian: {
+    label: 'Guardian',
+    parts: HUMANOID_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-0.5, 0, 0.15] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-1.1, 0, 0.6] as [number, number, number] }
+      : p),
   },
   // ZomWes 8000's walker: a hulking robot on bell-bottom legs, with a little
   // driver on its head pulling levers. From Wesley's drawing.
