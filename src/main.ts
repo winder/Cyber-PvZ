@@ -1,7 +1,7 @@
 import { Engine } from '@babylonjs/core';
 import { Audio } from './audio';
 import {
-  ABILITIES, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId,
+  ABILITIES, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId,
 } from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { RtsCamera } from './render/camera';
@@ -321,13 +321,15 @@ let acc = 0;
 engine.runRenderLoop(() => {
   const dt = Math.min(0.1, engine.getDeltaTime() / 1000);
   if (ui.started && !ui.paused && game.phase === 'battle') {
-    acc += dt * ui.speed;
+    acc += dt * GAME_SPEED * ui.speed;
+    // Enough steps to keep up at top speed on a slow frame, without spiralling.
     let steps = 0;
-    while (acc >= STEP && steps < 8) {
+    while (acc >= STEP && steps < 16) {
       game.step();
       acc -= STEP;
       steps++;
     }
+    if (steps === 16) acc = 0;
   } else {
     acc = 0;
   }
@@ -338,7 +340,7 @@ engine.runRenderLoop(() => {
   react(events);
 
   camera.update(dt);
-  renderer.sync(ui.paused ? 0 : dt * ui.speed);
+  renderer.sync(ui.paused ? 0 : dt * GAME_SPEED * ui.speed);
   renderer.setSelected(game.phase === 'build' ? ui.selectedPlant : null);
   renderer.showEdges(game.phase === 'build' ? game.wavePreview().map((l) => l.edge) : []);
   if (game.phase !== 'battle' && ui.aiming) {

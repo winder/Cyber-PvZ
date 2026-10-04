@@ -287,6 +287,12 @@ export const ABILITIES = {
   },
 } satisfies Record<AbilityId, AbilityDef & Record<string, string | number>>;
 
+/**
+ * How fast the game runs at "1×" (1 = the original pace). The speed button
+ * doubles whatever this is.
+ */
+export const GAME_SPEED = 2;
+
 export const ECONOMY = {
   startingSun: 400,
   /** Sun per second during battle, from nowhere in particular. */
