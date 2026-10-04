@@ -8,7 +8,8 @@ behind these terms are in [docs/adr/](docs/adr/).
 
 **Level** — One playable stage: a **Map**, a **Theme** and a list of
 **Waves**. Picked on the title screen or with `?level=` in the address.
-Currently *Neon Grid* (1), *Rust Corridor* (2) and *Cyber Cemetery* (3).
+Currently *Neon Grid* (1), *Rust Corridor* (2), *Cyber Cemetery* (3) and
+*Crash Jungle* (4).
 Code: `LevelDef`.
 
 **Wave** — One round of zombies. A level has 5; the last is the **final
@@ -48,13 +49,20 @@ for walls. Used for placement checks and for which **Nav cells** it blocks.
 Code: `src/sim/shapes.ts`.
 
 **Rock** — An obstacle zombies and plants can't use. On Rust Corridor rocks
-are drawn as **Car wrecks**, on Cyber Cemetery as **Tombstones** (in rows);
-the rules don't change. A rock can carry a `look` to be drawn as a landmark
+are drawn as **Car wrecks**, on Cyber Cemetery as **Tombstones** (in rows),
+on Crash Jungle as crashed spaceships (**Wrecks**); the rules don't change. A rock can carry a `look` to be drawn as a landmark
 instead, like the **Gazebo**. Code: `Rock`.
 
 **Mound** — One big hill raised out of the ground, flat on top (Cyber
 Cemetery's gazebo hill). Looks only: zombies walk over it as if it were flat.
 Code: `MapDef.mound`.
+
+**Crater** — A scorched bowl in the ground with a raised rim, where a ship
+came down (Crash Jungle; every wreck sits in one). Looks only: zombies walk
+through it. Code: `MapDef.craters`.
+
+**Crash furrow** — Crash Jungle's ravines: the trenches crashing ships
+ploughed, each with its wreck at the west end. Rules as any ravine.
 
 **Ravine** — A trench carved into the ground that nothing can cross except
 flyers and **Giants**. Its visible hole always stays inside its rectangular
@@ -135,7 +143,9 @@ are drawn, the ground style and **Decor**. Code: `ThemeDef`.
 **Decor** — Animated scenery that doesn't affect play: Rust Corridor's ruined
 city (buildings, lamps, tumbleweeds, skyline), and Cyber Cemetery's graveyard
 (neon **Fence**, **Gazebo**, ghosts rising from graves, slime, haunted houses
-under a big moon). Code: `src/render/decor.ts`, `src/render/graveyard.ts`.
+under a big moon), and Crash Jungle's jungle (giant trees with crashed ships
+hanging from their vines, palms, ferns, macaws). Code: `src/render/decor.ts`,
+`src/render/graveyard.ts`, `src/render/jungle.ts`.
 
 **Fence** — Cyber Cemetery's border: iron posts strung with humming neon
 beams, with a broken gate at the back where the zombies come in.
@@ -150,7 +160,8 @@ to ground-floor ruins so it never hides the game.
 into the street in a cloud of dust, throwing bricks that stay as rubble.
 Set off by a **Giant**'s stomp or an Orbital Laser Strike near the street's
 edge, and by ZomWes's entrance. On Cyber Cemetery the same moments knock
-tombstones flat instead. Looks only. Code: `Decor.crumble`.
+tombstones flat instead, and on Crash Jungle they shake a hanging ship loose
+to fall out of the trees. Looks only. Code: `Decor.crumble`.
 
 **Weather** — A dust storm (Rust Corridor) or thunderstorm (Neon Grid) that
 rolls in partway through chosen waves: thicker haze, blowing dust or rain,

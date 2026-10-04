@@ -335,6 +335,8 @@ export interface MapDef {
   alleys?: Partial<Record<EdgeId, number[]>>;
   /** One big hill raised out of the ground, flat on top. Looks only: zombies walk over it. */
   mound?: { x: number; z: number; r: number; height: number };
+  /** Bowl-shaped dents in the ground, with a raised rim. Looks only: zombies walk through them. */
+  craters?: Circle[];
   /** Where the camera starts looking (default: a little west of the middle). */
   view?: { x: number; z: number };
 }
@@ -485,6 +487,62 @@ const GRAVEYARD_MAP: MapDef = {
   view: { x: 4, z: -7 },
 };
 
+/**
+ * Level 4: a jungle where a whole fleet came down. Wrecks are rocks, each in
+ * its crater; the ravines are the furrows they ploughed on the way in, from
+ * the east, so each furrow trails off east of its wreck.
+ */
+const JUNGLE_WRECKS: Rock[] = [
+  // At the west ends of the furrows.
+  { x: -6, z: 15, r: 2.4 },
+  { x: 2, z: -14, r: 2.6 },
+  { x: 12, z: 3, r: 2.2 },
+  // Scattered all over.
+  { x: -8, z: -3, r: 1.6 },
+  { x: 4, z: 7, r: 1.3 },
+  { x: 20, z: 14, r: 1.8 },
+  { x: 24, z: -6, r: 2 },
+  { x: -2, z: -21, r: 1.4 },
+  { x: 16, z: -17, r: 1.5 },
+  { x: -10, z: 21, r: 1.3 },
+  { x: 30, z: 4, r: 1.4 },
+  { x: 8, z: 20, r: 1.2 },
+  { x: -4, z: 4, r: 1.2 },
+  { x: 18, z: -11, r: 1.2 },
+];
+const JUNGLE_MAP: MapDef = {
+  width: 72,
+  depth: 48,
+  hills: 0.8,
+  structures: [
+    { id: 'greenhouse', x: -27, z: 0 },
+    { id: 'powerPlant', x: -21, z: 13 },
+    { id: 'spaceship', x: -21, z: -13 },
+  ],
+  rocks: JUNGLE_WRECKS,
+  ravines: [
+    { x: 4.5, z: 15, w: 17, d: 3 },
+    { x: 13, z: -14, w: 18, d: 3 },
+    { x: 21, z: 3, w: 14, d: 3 },
+  ],
+  craters: [
+    // Under the wrecks, a little wider than each.
+    ...JUNGLE_WRECKS.map((w) => ({ x: w.x, z: w.z, r: w.r + 1.6 })),
+    // Ships that hit and bounced (or burnt up).
+    { x: -9, z: 7, r: 2.5 },
+    { x: 8, z: -5, r: 3 },
+    { x: 27, z: 16, r: 2.2 },
+    { x: -8, z: -12, r: 2 },
+    { x: 28, z: -16, r: 2.6 },
+  ],
+  edges: {
+    east: { from: -14, to: 14 },
+    north: { from: 4, to: 30 },
+    south: { from: 4, to: 30 },
+    west: { from: -10, to: 10 },
+  },
+};
+
 // ---------------------------------------------------------------------------
 //  THEMES: the look of a level. Colors are hex strings.
 // ---------------------------------------------------------------------------
@@ -507,14 +565,18 @@ export interface ThemeDef {
   border: string;
   glow: number;
   /** How rocks look: plain boulders, burnt-out car wrecks, or tombstones. */
-  rocks?: 'boulder' | 'carWreck' | 'tombstone';
+  rocks?: 'boulder' | 'carWreck' | 'tombstone' | 'shipWreck';
   /**
    * Extra scenery: the ruined city (skyscrapers, street lamps, tumbleweeds),
-   * or the graveyard (neon fence, gazebo, ghosts, slime, haunted houses, moon).
+   * the graveyard (neon fence, gazebo, ghosts, slime, haunted houses, moon),
+   * or the jungle (giant trees with crashed ships hanging from vines, palms).
    */
-  decor?: 'ruinedCity' | 'graveyard';
-  /** A painted ground instead of plain colors (asphalt street, sidewalks, rubble). */
-  groundStyle?: 'cityStreet';
+  decor?: 'ruinedCity' | 'graveyard' | 'jungle';
+  /**
+   * A painted ground instead of plain colors (asphalt street, sidewalks,
+   * rubble), or a patchy jungle floor (moss, grass and bare earth).
+   */
+  groundStyle?: 'cityStreet' | 'jungleFloor';
   /** Weather that rolls in partway through some waves. Looks only: the rules don't change. */
   weather?: WeatherDef;
 }
@@ -586,6 +648,28 @@ const GRAVEYARD_THEME: ThemeDef = {
   rocks: 'tombstone',
   decor: 'graveyard',
   weather: { kind: 'thunderstorm', waves: [5], after: 10 },
+};
+
+/** Steamy tropical afternoon: green haze, hot sun, a downpour later on. */
+const JUNGLE_THEME: ThemeDef = {
+  sky: '#9cc9b4',
+  fog: '#9cc4a6',
+  fogDensity: 0.008,
+  ground: '#3f6b2a',
+  ravine: '#2e1d0e',
+  light: '#fff4d6',
+  lightIntensity: 0.95,
+  bounce: '#2b4a1c',
+  sun: '#ffe2a8',
+  sunIntensity: 0.85,
+  rock: '#5f6670',
+  rockEdge: '#ff8a3d',
+  border: '#b6ff5c',
+  glow: 0.6,
+  rocks: 'shipWreck',
+  decor: 'jungle',
+  groundStyle: 'jungleFloor',
+  weather: { kind: 'thunderstorm', waves: [3, 5], after: 8 },
 };
 
 // ---------------------------------------------------------------------------
@@ -677,6 +761,15 @@ export const LEVELS: LevelDef[] = [
     map: GRAVEYARD_MAP,
     theme: GRAVEYARD_THEME,
     waves: GRAVEYARD_WAVES,
+  },
+  {
+    id: 'jungle',
+    name: 'Crash Jungle',
+    icon: '🌴',
+    description: 'A tropical jungle where a whole fleet of spaceships crashed.',
+    map: JUNGLE_MAP,
+    theme: JUNGLE_THEME,
+    waves: WAVES,
   },
 ];
 

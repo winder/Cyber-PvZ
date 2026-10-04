@@ -5,6 +5,7 @@ import {
 import { type EdgeId, type LevelDef } from '../data/config';
 import { buildCarWreck, createRuinedCity, type Decor } from './decor';
 import { buildTombstones, createGraveyard } from './graveyard';
+import { createJungle } from './jungle';
 import { streetTexture } from './streetTexture';
 import { RAVINE_DEPTH, Terrain } from './terrain';
 import { Materials } from './visuals';
@@ -23,6 +24,16 @@ export interface World {
    * Cinematics and weather multiply their dimming together before calling this.
    */
   setLighting(scale: number, flash: number): void;
+}
+
+const SCORCH = new Color3(0.16, 0.12, 0.08);
+const EARTH = new Color3(0.36, 0.27, 0.16);
+
+/** Jungle floor: the base green, mottled with darker moss and patches of bare earth. */
+function jungleFloor(base: Color3, x: number, z: number): Color3 {
+  const moss = 0.5 + 0.5 * Math.sin(x * 0.45 + Math.sin(z * 0.3) * 2) * Math.cos(z * 0.38 - x * 0.12);
+  const dirt = Math.max(0, Math.sin(x * 0.21 + 1.3) * Math.sin(z * 0.27 - 0.8) + 0.25 * Math.sin(x * 1.1 + z * 0.9) - 0.45) * 2.2;
+  return Color3.Lerp(base.scale(0.75 + moss * 0.4), EARTH, Math.min(0.8, dirt));
 }
 
 export function createWorld(engine: Engine, level: LevelDef): World {
@@ -69,7 +80,9 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     positions[i + 1] = y;
     // Darker the further down into a ravine it goes.
     const t = Math.pow(Math.min(1, Math.max(0, (terrain.surfaceHeight(x, z) - y) / RAVINE_DEPTH)), 0.6);
-    const c = Color3.Lerp(top, deep, t);
+    // Patches of moss and bare earth on a jungle floor; crater floors are scorched.
+    const floor = theme.groundStyle === 'jungleFloor' ? jungleFloor(top, x, z) : top;
+    const c = Color3.Lerp(Color3.Lerp(floor, SCORCH, terrain.scorch(x, z) * 0.8), deep, t);
     colors.push(c.r, c.g, c.b, 1);
   }
   const normals: number[] = [];
@@ -120,7 +133,8 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   // gazebo are drawn by the decor.
   const tombstones = theme.rocks === 'tombstone' ? buildTombstones(scene, map.rocks.filter((r) => !r.look), terrain) : undefined;
   for (const [i, r] of map.rocks.entries()) {
-    if (r.look || tombstones) continue;
+    // Ship wrecks are drawn by the jungle decor.
+    if (r.look || tombstones || theme.rocks === 'shipWreck') continue;
     if (theme.rocks === 'carWreck') {
       // Burnt-out car husks instead of boulders, sat a little into the dirt.
       const car = buildCarWreck(scene, `wreck${i}`, r.r, 100 + i);
@@ -162,6 +176,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
 
   const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground))
     : theme.decor === 'graveyard' ? createGraveyard(scene, map, terrain, glow, hex(theme.ground), hex(theme.fog), tombstones)
+    : theme.decor === 'jungle' ? createJungle(scene, map, terrain, hex(theme.ground))
     : undefined;
 
   const setLighting = (scale: number, flash: number) => {

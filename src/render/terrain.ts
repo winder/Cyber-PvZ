@@ -26,6 +26,18 @@ function hills(x: number, z: number): number {
   );
 }
 
+/**
+ * How much a crater changes the ground at distance `t` (in crater radii) from
+ * its middle: a bowl down to about a third of its radius deep, a raised rim
+ * of thrown-up earth, then back to normal.
+ */
+function crater(t: number, r: number): number {
+  if (t >= 1.6) return 0;
+  const depth = Math.min(1.6, r * 0.35), rim = Math.min(0.6, r * 0.15);
+  if (t < 1) return -depth * (1 - t * t) + rim * t * t * t * t;
+  return rim * (1 - smoothstep(1, 1.6, t));
+}
+
 /** Gentle wobble so ravine edges look natural rather than ruler-straight. */
 function edgeWobble(x: number, z: number): number {
   // Always 0–0.7, so the hole never pokes outside the area zombies can't cross.
@@ -43,12 +55,22 @@ export class Terrain {
 
   /** Rolling hills, and the map's big hill (mound) if it has one. */
   private natural(x: number, z: number): number {
-    const h = hills(x, z) * this.map.hills;
+    let h = hills(x, z) * this.map.hills;
     const m = this.map.mound;
-    if (!m) return h;
-    // Rises out of the hills to a flat top a third of its width across.
-    const up = 1 - smoothstep(m.r * 0.32, m.r, Math.hypot(x - m.x, z - m.z));
-    return h + (m.height - h) * up;
+    if (m) {
+      // Rises out of the hills to a flat top a third of its width across.
+      const up = 1 - smoothstep(m.r * 0.32, m.r, Math.hypot(x - m.x, z - m.z));
+      h += (m.height - h) * up;
+    }
+    for (const c of this.map.craters ?? []) h += crater(Math.hypot(x - c.x, z - c.z) / c.r, c.r);
+    return h;
+  }
+
+  /** How burnt the ground is (0 to 1): blackest in the middle of a crater. */
+  scorch(x: number, z: number): number {
+    let s = 0;
+    for (const c of this.map.craters ?? []) s = Math.max(s, 1 - smoothstep(0.4, 1.15, Math.hypot(x - c.x, z - c.z) / c.r));
+    return s;
   }
 
   /** Ground height ignoring ravines (what flyers and giants pass over). */
