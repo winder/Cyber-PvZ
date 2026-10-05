@@ -3,7 +3,7 @@ import {
 } from '@babylonjs/core';
 import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
-import { animate, UNIT } from './blockModel';
+import { animate, LEAP_SECONDS, UNIT } from './blockModel';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
 } from './visuals';
@@ -19,6 +19,8 @@ interface Tracked {
   z: number;
   /** Eased ground height under flyers and giants, so they glide over dips. */
   groundY?: number;
+  /** Eased speed over the ground (units per second), for leaping gaits. */
+  speed?: number;
 }
 
 interface Effect {
@@ -165,8 +167,10 @@ export class Renderer {
       }
       // Actually going somewhere? (Escorts sometimes stand still at their post.)
       const moving = Math.hypot(z.x - t.x, z.z - t.z) > 0.03;
+      const px = t.x, pz = t.z;
       t.x += (z.x - t.x) * ease;
       t.z += (z.z - t.z) * ease;
+      if (dt > 0) t.speed = (t.speed ?? 0) + (Math.hypot(t.x - px, t.z - pz) / dt - (t.speed ?? 0)) * Math.min(1, dt * 4);
       const root = t.visual.root;
       const chewing = z.attacking !== null;
       // Giants stride straight over ravines at rim height.
@@ -187,11 +191,17 @@ export class Renderer {
       root.rotation.y = yaw(z.facing);
       const character = t.visual.character;
       if (character) {
-        const lift = animate(character, this.time, { moving: moving && !chewing, chewing, flying: def.flying }, z.id);
+        const { lift, stride } = animate(character, this.time, { moving: moving && !chewing, chewing, flying: def.flying }, z.id);
         t.visual.update?.(this.time, moving && !chewing);
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
+        if (stride) {
+          // Leapers hold still on the ground and cover it in the air.
+          const along = stride * (t.speed ?? 0) * LEAP_SECONDS;
+          root.position.x += Math.cos(z.facing) * along;
+          root.position.z += Math.sin(z.facing) * along;
+        }
       } else {
         root.rotation.x = chewing ? 0.25 : 0;
       }
