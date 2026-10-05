@@ -10,6 +10,7 @@ import {
 } from './blockModel';
 import { skinUnits, type ModelId } from '../models/models';
 import { getCustomSkin } from '../skins';
+import { createBrain } from './brain';
 import { buildHair } from './hair';
 import { attachWeapon } from './weapons';
 
@@ -274,9 +275,9 @@ const structureFactories: Record<StructureId, Factory> = {
     const dome = MeshBuilder.CreateSphere(`${name}-dome`, { diameterX: r * 1.9, diameterY: r * 2.2, diameterZ: r * 1.9, segments: 16 }, scene);
     dome.material = mats.neon('#3cff9e', 0.5, 0.25);
     part(dome, root, 0, 0.5, 0);
-    const brain = MeshBuilder.CreateSphere(`${name}-brain`, { diameterX: 1.8, diameterY: 1.3, diameterZ: 1.5, segments: 12 }, scene);
-    brain.material = mats.neon(STRUCTURES.greenhouse.color, 0.9);
-    part(brain, root, 0, 1.4, 0);
+    const brain = createBrain(scene, `${name}-brain`, 1.9);
+    part(brain, root, 0, 1.45, 0);
+    brain.rotation.y = Math.PI / 2; // side on to the camera: the classic profile
     const ring = MeshBuilder.CreateTorus(`${name}-ring`, { diameter: r * 2, thickness: 0.1, tessellation: 32 }, scene);
     ring.material = mats.neon('#3cff9e', 1.2);
     part(ring, root, 0, 0.5, 0);
