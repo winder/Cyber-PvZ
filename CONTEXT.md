@@ -194,6 +194,14 @@ card** ("ZOMWES 8000 HAS ENTERED THE RUST CORRIDOR").
 motion while the camera closes in, then confetti and the **victory banner**
 before the win screen.
 
+**Death** — How a fallen zombie goes, picked at random: limbs pop off while
+the body crumbles; "!!!" and bug eyes, then a stiff topple; or zapped to
+x-ray bones and ash. Some zombies have a death of their own, played half the
+time (the Jetpack Zombie is blasted at the camera; the Riot Shield Bot is
+squished by its shield). The Orbital Laser Strike **shatters** what it kills,
+throwing a few parts at the screen. Looks only. Code: `src/render/deaths.ts`,
+`ZombieDef.death`.
+
 ## Testing
 
 **Debug mode** — `?debug` in the address: jump to any wave (bases repaired,

@@ -80,6 +80,11 @@ export interface ZombieDef {
   /** Worn on the head: a clump of grass with the tombstone it rose from stuck in it. */
   hat?: 'tombstone';
   /**
+   * A death animation only this zombie has, played instead of a common one
+   * some of the time. Looks only.
+   */
+  death?: 'jetpackBlast' | 'shieldSquish';
+  /**
    * Coming up out of the graves: takes `time` seconds to climb out (standing
    * still), from a tombstone at least `minPathDistance` from the nearest base
    * along the way zombies walk (so not right on top of the defense).
@@ -201,6 +206,7 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     flying: false,
     radius: 0.45,
     color: '#5b7bff',
+    death: 'shieldSquish',
   },
   jetpack: {
     name: 'Jetpack Zombie',
@@ -214,6 +220,7 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     color: '#ff8a3d',
     model: 'jetpackHumanoid',
     skin: 'skins/jetpack.png',
+    death: 'jetpackBlast',
   },
   // Bursts up out of a grave with its tombstone on its head. The stone is
   // a helmet: it soaks up some of every hit.

@@ -1,9 +1,10 @@
 import {
   Color3, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3,
 } from '@babylonjs/core';
-import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId } from '../data/config';
+import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type ZombieId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
 import { animate, LEAP_SECONDS, UNIT } from './blockModel';
+import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
 } from './visuals';
@@ -48,6 +49,14 @@ export class Renderer {
   private selectRing: Mesh;
   private aimRing: Mesh;
   private beamMats: Record<string, StandardMaterial> = {};
+  /** Zombies just killed (by id): how each is going to go, played when its visual leaves. */
+  private dying = new Map<number, { type: ZombieId; kind: DeathKind; blast?: { x: number; z: number }; toCamera: number }>();
+  /** Where strikes landed this frame, and how many more bits may still fly at the screen. */
+  private blasts: { x: number; z: number }[] = [];
+  private screenBits = 0;
+  /** Shake the camera (wired up once the camera exists). */
+  shake: (amount: number) => void = () => {};
+  private deathStage: DeathStage;
   private barMats: StandardMaterial[] = [];
   private time = 0;
 
@@ -63,6 +72,7 @@ export class Renderer {
     }
 
     this.buildStructures();
+    this.deathStage = { scene, mats: world.mats, terrain: world.terrain, shake: (a) => this.shake(a) };
 
     this.ghostGood = new StandardMaterial('ghostGood', scene);
     this.ghostGood.emissiveColor = new Color3(0.3, 1, 0.5);
@@ -221,7 +231,7 @@ export class Renderer {
     }
     for (const [id, t] of this.zombies) {
       if (!seenZombies.has(id)) {
-        this.topple(t);
+        this.die(id, t);
         this.zombies.delete(id);
       }
     }
@@ -252,6 +262,7 @@ export class Renderer {
   // --------------------------------------------------------------------------
 
   handle(events: SimEvent[]): void {
+    this.blasts = [];
     for (const e of events) {
       switch (e.t) {
         case 'shot': this.beam(e.fromX, e.fromZ, e.toX, e.toZ, e.toAir, PLANTS[e.kind].color); break;
@@ -265,13 +276,18 @@ export class Renderer {
             }
             this.strikeBlast(e.x, e.z, 4);
           } else {
-            this.burst(e.x, e.z, def.color, def.flying ? this.world.terrain.surfaceHeight(e.x, e.z) + FLY_HEIGHT : this.world.terrain.terrainHeight(e.x, e.z) + 0.6);
+            this.dying.set(e.id, this.planDeath(e.type, e.by, e.x, e.z));
           }
           break;
         }
         case 'plantDied': this.burst(e.x, e.z, '#3cff6e', this.world.terrain.terrainHeight(e.x, e.z) + 0.6); break;
         case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay); break;
-        case 'strikeHit': this.strikeBlast(e.x, e.z, e.radius); break;
+        case 'strikeHit':
+          this.strikeBlast(e.x, e.z, e.radius);
+          this.blasts.push({ x: e.x, z: e.z });
+          // A strike throws a few bits at the screen, however many it kills.
+          this.screenBits = 3;
+          break;
         case 'structureDestroyed': this.destroyStructure(e.index); break;
         case 'graveRisen': this.dirtSpray(e.x, e.z); break;
         case 'jumped': this.buildStructures(); break;
@@ -409,6 +425,31 @@ export class Renderer {
       },
       dispose: () => { for (const c of clods) c.mesh.dispose(); },
     });
+  }
+
+  private planDeath(type: ZombieId, by: 'plant' | 'strike', x: number, z: number) {
+    const kind = pickDeath(type, by);
+    if (kind !== 'shatter') return { type, kind, toCamera: 0 };
+    let blast = this.blasts[0];
+    for (const b of this.blasts) if (Math.hypot(b.x - x, b.z - z) < Math.hypot(blast.x - x, blast.z - z)) blast = b;
+    const toCamera = Math.min(this.screenBits, Math.random() < 0.5 ? 2 : 1);
+    this.screenBits -= toCamera;
+    return { type, kind, blast, toCamera };
+  }
+
+  /** A zombie's gone from the sim: play its death, or just topple it if it has none planned. */
+  private die(id: number, t: Tracked): void {
+    const plan = this.dying.get(id);
+    this.dying.delete(id);
+    if (plan) {
+      t.bar.dispose();
+      const effect = playDeath(plan.kind, t.visual, this.deathStage, plan);
+      if (effect) {
+        this.effects.push(effect);
+        return;
+      }
+    }
+    this.topple(t);
   }
 
   /** A zombie that's gone keeps its body a moment longer: it keels over and sinks away. */

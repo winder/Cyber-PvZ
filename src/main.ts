@@ -45,6 +45,7 @@ const game = new Game(Date.now() & 0xffff, level);
 const world = createWorld(engine, level);
 const renderer = new Renderer(world, game);
 const camera = makeCamera();
+renderer.shake = (amount) => camera.shake(amount);
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, game, (x, z) => camera.lookAt(x, z));
 const hud = makeHud();
 const spectacle = new Spectacle(world, camera, game, level, {

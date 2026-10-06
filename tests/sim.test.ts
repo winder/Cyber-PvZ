@@ -175,6 +175,20 @@ describe('Game', () => {
     expect(g.zombies.includes(z)).toBe(false);
   });
 
+  it('says which zombie died, and whether the strike did it', () => {
+    const g = new Game();
+    g.startWave();
+    const struck = g.spawn('cyborg', 'east');
+    g.useAbility('orbitalStrike', struck.x, struck.z);
+    runSeconds(g, 1);
+    const shot = g.spawn('cyborg', 'west');
+    shot.hp = 0;
+    g.step();
+    const deaths = g.drainEvents().filter((e) => e.t === 'zombieDied');
+    expect(deaths).toContainEqual(expect.objectContaining({ id: struck.id, by: 'strike' }));
+    expect(deaths).toContainEqual(expect.objectContaining({ id: shot.id, by: 'plant' }));
+  });
+
   it('clearing a wave heals plants and returns to build', () => {
     const g = new Game();
     const r = g.place('laserPea', 0, 0);

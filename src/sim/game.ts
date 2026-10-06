@@ -71,7 +71,8 @@ export interface Strike { x: number; z: number; timer: number }
 
 export type SimEvent =
   | { t: 'shot'; plantId: number; kind: PlantId; fromX: number; fromZ: number; toX: number; toZ: number; toAir: boolean }
-  | { t: 'zombieDied'; type: ZombieId; x: number; z: number }
+  /** `by`: what finished it off (a plant's shot, or the Orbital Laser Strike). */
+  | { t: 'zombieDied'; id: number; type: ZombieId; x: number; z: number; by: 'plant' | 'strike' }
   | { t: 'plantPlaced'; id: number }
   | { t: 'plantSold'; id: number }
   | { t: 'plantDied'; id: number; x: number; z: number }
@@ -131,6 +132,8 @@ export class Game {
   events: SimEvent[] = [];
 
   private nextId = 1;
+  /** Zombies the Orbital Laser Strike killed, until they're cleared away. */
+  private readonly struckDown = new Set<number>();
   private tick = 0;
   private waveTime = 0;
   private spawnQueue: QueuedSpawn[] = [];
@@ -773,7 +776,9 @@ export class Game {
       if (s.timer > 0) continue;
       const { radius, damage } = ABILITIES.orbitalStrike;
       for (const zb of this.zombies) {
-        if (Math.hypot(zb.x - s.x, zb.z - s.z) <= radius + ZOMBIES[zb.type].radius) this.damageZombie(zb, damage);
+        if (zb.hp <= 0 || Math.hypot(zb.x - s.x, zb.z - s.z) > radius + ZOMBIES[zb.type].radius) continue;
+        this.damageZombie(zb, damage);
+        if (zb.hp <= 0) this.struckDown.add(zb.id);
       }
       this.events.push({ t: 'strikeHit', x: s.x, z: s.z, radius });
       this.strikes.splice(i, 1);
@@ -784,7 +789,8 @@ export class Game {
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const zb = this.zombies[i];
       if (zb.hp > 0) continue;
-      this.events.push({ t: 'zombieDied', type: zb.type, x: zb.x, z: zb.z });
+      const by = this.struckDown.delete(zb.id) ? 'strike' : 'plant';
+      this.events.push({ t: 'zombieDied', id: zb.id, type: zb.type, x: zb.x, z: zb.z, by });
       this.zombies.splice(i, 1);
     }
     for (let i = this.plants.length - 1; i >= 0; i--) {
@@ -855,6 +861,7 @@ export class Game {
     this.wave = Math.max(0, Math.min(this.totalWaves - 1, Math.floor(n)));
     this.phase = 'build';
     this.zombies.length = 0;
+    this.struckDown.clear();
     this.strikes.length = 0;
     this.spawnQueue = [];
     this.waveTime = 0;
