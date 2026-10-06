@@ -10,6 +10,8 @@ import {
 import type { World } from './world';
 
 const FLY_HEIGHT = 2.6;
+/** How far below the ground a zombie starts climbing out of its grave (just the tombstone on its head showing). */
+const RISE_DEPTH = 1.8;
 
 interface Tracked {
   visual: Visual;
@@ -161,7 +163,9 @@ export class Renderer {
       const def = ZOMBIES[z.type];
       let t = this.zombies.get(z.id);
       if (!t) {
-        const visual = createZombieVisual(scene, mats, z.type, `zombie${z.id}`);
+        // Risen out of a grave: that tombstone goes with it, on its head.
+        const stone = z.grave >= 0 ? this.world.tombstones?.rise(z.grave) : undefined;
+        const visual = createZombieVisual(scene, mats, z.type, `zombie${z.id}`, stone);
         t = { visual, bar: this.makeBar(visual, 0.9), x: z.x, z: z.z };
         this.zombies.set(z.id, t);
       }
@@ -196,6 +200,14 @@ export class Renderer {
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
+        if (z.rising > 0 && def.rise) {
+          // Clawing up out of the grave: shoves up in fits and starts, trembling.
+          const k = 1 - z.rising / def.rise.time;
+          const up = 1 - Math.pow(1 - k, 2) + Math.sin(k * Math.PI * 4) * 0.04 * (1 - k);
+          root.position.y = ground - RISE_DEPTH * (1 - up);
+          root.position.x += Math.sin(this.time * 40 + z.id) * 0.03 * (1 - k);
+          root.rotation.x = -0.25 * (1 - k);
+        }
         if (stride) {
           // Leapers hold still on the ground and cover it in the air.
           const along = stride * (t.speed ?? 0) * LEAP_SECONDS;
@@ -261,6 +273,7 @@ export class Renderer {
         case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay); break;
         case 'strikeHit': this.strikeBlast(e.x, e.z, e.radius); break;
         case 'structureDestroyed': this.destroyStructure(e.index); break;
+        case 'graveRisen': this.dirtSpray(e.x, e.z); break;
         case 'jumped': this.buildStructures(); break;
         default: break;
       }
@@ -364,6 +377,37 @@ export class Renderer {
         return t < 0.5;
       },
       dispose: () => { column.dispose(); dome.dispose(); },
+    });
+  }
+
+  /** Clods of earth thrown up as something bursts out of a grave. */
+  private dirtSpray(x: number, z: number): void {
+    const { scene } = this.world;
+    const ground = this.world.terrain.terrainHeight(x, z);
+    const clods: { mesh: Mesh; vx: number; vy: number; vz: number; spin: number }[] = [];
+    for (let i = 0; i < 12; i++) {
+      const mesh = MeshBuilder.CreateBox('clod', { size: 0.1 + Math.random() * 0.12 }, scene);
+      mesh.material = this.world.mats.dark(i % 3 ? '#8a5a30' : '#4f9a3a');
+      mesh.position.set(x, ground + 0.2, z);
+      mesh.isPickable = false;
+      const a = Math.random() * Math.PI * 2, out = 0.8 + Math.random() * 1.6;
+      clods.push({ mesh, vx: Math.cos(a) * out, vy: 2.5 + Math.random() * 2.5, vz: Math.sin(a) * out, spin: (Math.random() - 0.5) * 12 });
+    }
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        for (const c of clods) {
+          c.vy -= 12 * dt;
+          c.mesh.position.x += c.vx * dt;
+          c.mesh.position.y = Math.max(ground, c.mesh.position.y + c.vy * dt);
+          c.mesh.position.z += c.vz * dt;
+          c.mesh.rotation.x += c.spin * dt;
+          c.mesh.rotation.z += c.spin * dt * 0.7;
+        }
+        return t < 1.1;
+      },
+      dispose: () => { for (const c of clods) c.mesh.dispose(); },
     });
   }
 

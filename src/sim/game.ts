@@ -1,6 +1,6 @@
 import {
   ABILITIES, ECONOMY, LEVELS, PLANTS, STRUCTURES, ZOMBIES,
-  type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnGroup, type StructureId, type ZombieId,
+  type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
 import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
 import { boundingRadius, distanceToPlant, footprintPoints, isRotatable, thicknessAcross } from './shapes';
@@ -49,6 +49,10 @@ export interface Zombie {
   slot: number;
   /** Seconds a bodyguard keeps to the normal route after finding its straight way blocked. */
   detour: number;
+  /** The map rock (tombstone) it rose out of, or -1 if it walked in. */
+  grave: number;
+  /** Seconds left climbing out of the grave (it stands still until then). */
+  rising: number;
 }
 
 export interface Structure {
@@ -74,6 +78,7 @@ export type SimEvent =
   | { t: 'chomp'; x: number; z: number }
   | { t: 'stomp'; x: number; z: number }
   | { t: 'bossSpawn'; type: ZombieId }
+  | { t: 'graveRisen'; rock: number; x: number; z: number }
   | { t: 'wander'; type: ZombieId; to: number }
   | { t: 'structureHit'; index: number }
   | { t: 'structureDestroyed'; index: number }
@@ -89,7 +94,7 @@ export type SimEvent =
 export type PlaceResult = { ok: true; plant: Plant } | { ok: false; reason: string };
 export type AbilityResult = { ok: true } | { ok: false; reason: string };
 
-export interface WavePreviewLine { edge: EdgeId; zombie: ZombieId; count: number }
+export interface WavePreviewLine { edge: SpawnFrom; zombie: ZombieId; count: number }
 
 /** Small deterministic random number generator so tests are repeatable. */
 function mulberry32(seed: number): () => number {
@@ -103,7 +108,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-interface QueuedSpawn { time: number; zombie: ZombieId; edge: EdgeId }
+interface QueuedSpawn { time: number; zombie: ZombieId; edge: SpawnFrom }
 
 export class Game {
   phase: Phase = 'build';
@@ -119,6 +124,8 @@ export class Game {
   readonly strikes: Strike[] = [];
   readonly nav: NavGrid;
   readonly cooldowns: Record<AbilityId, number> = { orbitalStrike: 0, hyperSun: 0 };
+  /** Map rocks (by index) that have risen as zombies and are gone for good. */
+  readonly risen = new Set<number>();
   hyperTimer = 0;
   /** Events since the last drain; the renderer and sound read these. */
   events: SimEvent[] = [];
@@ -138,8 +145,7 @@ export class Game {
     this.totalWaves = level.waves.length;
     this.rand = mulberry32(seed);
     this.nav = new NavGrid(this.map.width, this.map.depth);
-    for (const r of this.map.rocks) this.nav.addRock(r);
-    for (const c of this.map.ravines) this.nav.addRavine(c);
+    this.markObstacles();
     this.structures = this.map.structures.map((s, index) => ({
       index, type: s.id, x: s.x, z: s.z, hp: STRUCTURES[s.id].hp, alive: true,
     }));
@@ -345,7 +351,12 @@ export class Game {
     }
   }
 
-  spawn(type: ZombieId, edge: EdgeId): Zombie {
+  spawn(type: ZombieId, edge: SpawnFrom): Zombie {
+    if (edge === 'graves') {
+      const risen = this.raiseGrave(type);
+      if (risen) return risen;
+      edge = (Object.keys(this.map.edges) as EdgeId[])[0]; // no graves left: walk in instead
+    }
     const range = this.map.edges[edge];
     const hw = this.map.width / 2 - 0.5, hd = this.map.depth / 2 - 0.5;
     let x = 0, z = 0;
@@ -381,10 +392,48 @@ export class Game {
     const zombie: Zombie = {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
-      leader: null, slot: 0, detour: 0,
+      leader: null, slot: 0, detour: 0, grave: -1, rising: 0,
     };
     this.zombies.push(zombie);
     return zombie;
+  }
+
+  /**
+   * A tombstone (any rock without a `look`) far enough from the bases comes
+   * up as a zombie. The rock is gone for good, opening up the way through.
+   */
+  private raiseGrave(type: ZombieId): Zombie | undefined {
+    const rise = ZOMBIES[type].rise ?? { time: 0, minPathDistance: 0 };
+    if (this.fieldDirty) this.refreshField();
+    const graves: number[] = [];
+    for (const [i, r] of this.map.rocks.entries()) {
+      if (r.look || this.risen.has(i)) continue;
+      // How far it would walk from here (the cells round the stone; under it is blocked).
+      let walk = Infinity;
+      this.nav.forCellsInCircle(r.x, r.z, r.r + 0.6, (cell) => { walk = Math.min(walk, this.nav.dist[cell]); });
+      if (walk >= rise.minPathDistance && walk < Infinity) graves.push(i);
+    }
+    if (graves.length === 0) return undefined;
+    const rock = graves[Math.floor(this.rand() * graves.length)];
+    const { x, z } = this.map.rocks[rock];
+    this.risen.add(rock);
+    this.markObstacles();
+    for (const p of this.plants) this.markPlant(p);
+    this.fieldDirty = true;
+    const zombie = this.addZombie(type, x, z);
+    zombie.grave = rock;
+    zombie.rising = rise.time;
+    // Tombstones face the front (south); so does whatever climbs out of one.
+    zombie.facing = -Math.PI / 2;
+    this.events.push({ t: 'graveRisen', rock, x, z });
+    return zombie;
+  }
+
+  /** Block the cells under standing rocks and ravines. */
+  private markObstacles(): void {
+    this.nav.blocked.fill(0);
+    for (const [i, r] of this.map.rocks.entries()) if (!this.risen.has(i)) this.nav.addRock(r);
+    for (const c of this.map.ravines) this.nav.addRavine(c);
   }
 
   /** Where bodyguard number `slot` stands: beside the leader's left, right, and behind. */
@@ -445,6 +494,11 @@ export class Game {
       if (zb.slowTimer > 0) zb.slowTimer -= DT;
       const speed = def.speed * (zb.slowTimer > 0 ? zb.slowFactor : 1);
       zb.attacking = null;
+
+      if (zb.rising > 0) {
+        zb.rising = Math.max(0, zb.rising - DT);
+        continue;
+      }
 
       if (def.giant) {
         this.updateGiant(zb, speed);

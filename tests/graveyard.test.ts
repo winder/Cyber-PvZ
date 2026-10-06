@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEVELS, PLANTS, type PlantId, type StructureId } from '../src/data/config';
+import { LEVELS, PLANTS, ZOMBIES, type PlantId, type Rock, type StructureId } from '../src/data/config';
 import { Game, TICK_RATE } from '../src/sim/game';
 
 const GRAVEYARD = LEVELS.find((l) => l.id === 'graveyard')!;
@@ -22,8 +22,10 @@ function attackOrder(seed: number): StructureId[] {
 }
 
 describe('Cyber Cemetery', () => {
-  it('zombies only come out the back gate', () => {
-    for (const wave of GRAVEYARD.waves) for (const group of wave) expect(group.edge).toBe('north');
+  it('zombies only come out the back gate (or up out of the graves)', () => {
+    for (const wave of GRAVEYARD.waves) {
+      for (const group of wave) expect(group.edge).toBe(group.zombie === 'tombstone' ? 'graves' : 'north');
+    }
   });
 
   it('the ravine maze leads zombies to the Spaceship, then the Power Plant, then the Greenhouse', () => {
@@ -78,6 +80,62 @@ const PLAN: [PlantId, number, number][] = [
   ['laserPea', 22, 1], ['cryoPea', 2, -17], ['laserPea', 13, -10.5], ['laserPea', -10, -10.5],
   ['laserPea', 27.2, -7], ['laserPea', 16.8, -7], ['laserPea', 11, -14], ['laserPea', 5, -17],
 ];
+
+describe('Tombstone Zombie', () => {
+  const rise = ZOMBIES.tombstone.rise!;
+
+  /** How far a zombie would walk to the nearest base from beside this rock. */
+  function walk(g: Game, r: Rock): number {
+    let d = Infinity;
+    g.nav.forCellsInCircle(r.x, r.z, r.r + 0.6, (cell) => { d = Math.min(d, g.nav.dist[cell]); });
+    return d;
+  }
+
+  it('comes up out of a tombstone, which is gone from the map for good', () => {
+    const g = new Game(1, GRAVEYARD);
+    g.phase = 'battle';
+    const z = g.spawn('tombstone', 'graves');
+    const rock = GRAVEYARD.map.rocks[z.grave];
+    expect(rock.look).toBeUndefined();
+    expect([z.x, z.z]).toEqual([rock.x, rock.z]);
+    expect(g.risen.has(z.grave)).toBe(true);
+    expect(g.nav.blocked[g.nav.cellOf(rock.x, rock.z)]).toBe(0);
+    expect(g.drainEvents()).toContainEqual({ t: 'graveRisen', rock: z.grave, x: rock.x, z: rock.z });
+  });
+
+  it('stands still while it climbs out, then sets off', () => {
+    const g = new Game(1, GRAVEYARD);
+    g.phase = 'battle';
+    const z = g.spawn('tombstone', 'graves');
+    const start = { x: z.x, z: z.z };
+    for (let i = 0; i < Math.floor(rise.time * TICK_RATE) - 1; i++) g.step();
+    expect(Math.hypot(z.x - start.x, z.z - start.z)).toBeLessThan(0.05);
+    for (let i = 0; i < TICK_RATE * 2; i++) g.step();
+    expect(Math.hypot(z.x - start.x, z.z - start.z)).toBeGreaterThan(0.5);
+  });
+
+  it('only rises from graves well back from the bases, each grave once', () => {
+    const g = new Game(1, GRAVEYARD);
+    g.phase = 'battle';
+    const fresh = new Game(1, GRAVEYARD);
+    const seen = new Set<number>();
+    for (let i = 0; i < 30; i++) {
+      const z = g.spawn('tombstone', 'graves');
+      expect(seen.has(z.grave)).toBe(false);
+      seen.add(z.grave);
+      expect(walk(fresh, GRAVEYARD.map.rocks[z.grave])).toBeGreaterThanOrEqual(rise.minPathDistance);
+    }
+  });
+
+  it('walks in through an edge once every grave has risen', () => {
+    const g = new Game(1, GRAVEYARD);
+    g.phase = 'battle';
+    for (let i = 0; i < GRAVEYARD.map.rocks.length; i++) g.spawn('tombstone', 'graves');
+    const last = g.spawn('tombstone', 'graves');
+    expect(last.grave).toBe(-1);
+    expect(Math.abs(last.z)).toBeGreaterThan(GRAVEYARD.map.depth / 2 - 1);
+  });
+});
 
 describe('Cyber Cemetery balance', () => {
   it('a sensible defense can win', () => {

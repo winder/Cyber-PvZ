@@ -177,7 +177,12 @@ export interface Tombstone {
   roll: number;
   scale: number;
   template: Template;
+  /** Which template (shape), and which map rock this stone stands for. */
+  kind: number;
+  rock: number;
   index: number;
+  /** Risen out of the ground as a Tombstone Zombie: not drawn here any more. */
+  gone: boolean;
   /** 0 = standing, 1 = knocked flat. */
   fall: number;
   fallDir: number;
@@ -283,10 +288,15 @@ function templates(scene: Scene): Template[] {
   return [round, cross, slab, obelisk];
 }
 
+/** Which tombstone a zombie took with it: its shape and size. */
+export interface StoneLook { kind: number; scale: number }
+
 export interface Tombstones {
   stones: Tombstone[];
   /** Knock over up to `max` standing tombstones within `reach` of (x, z). True if any fell. */
   topple(x: number, z: number, reach: number, max: number): boolean;
+  /** Map rock `rock` comes up out of the ground: leave an open grave, and say what the stone looked like. */
+  rise(rock: number): StoneLook | undefined;
   update(dt: number, t: number): void;
 }
 
@@ -299,14 +309,25 @@ function stoneMatrix(s: Tombstone): Matrix {
   );
 }
 
-/** Tombstones in place of rocks, all facing the front (south), each settled a little differently. */
+/** Mostly rounded headstones and slabs, with crosses and the odd obelisk. */
+function pickKind(i: number): number {
+  const pick = hash(i, 5);
+  return pick < 0.4 ? 0 : pick < 0.65 ? 2 : pick < 0.9 ? 1 : 3;
+}
+
+/**
+ * Tombstones in place of rocks (all but landmarks, which have a `look`), all
+ * facing the front (south), each settled a little differently.
+ */
 export function buildTombstones(scene: Scene, rocks: Rock[], terrain: Terrain): Tombstones {
   const kinds = templates(scene);
   const stones: Tombstone[] = [];
-  for (const [i, r] of rocks.entries()) {
-    // Mostly rounded headstones and slabs, with crosses and the odd obelisk.
-    const pick = hash(i, 5);
-    const template = kinds[pick < 0.4 ? 0 : pick < 0.65 ? 2 : pick < 0.9 ? 1 : 3];
+  let i = -1;
+  for (const [rock, r] of rocks.entries()) {
+    if (r.look) continue;
+    i++;
+    const kind = pickKind(i);
+    const template = kinds[kind];
     const slimy = hash(i, 9) < 0.2;
     const s: Tombstone = {
       x: r.x, z: r.z, y: terrain.surfaceHeight(r.x, r.z) - 0.05,
@@ -315,7 +336,7 @@ export function buildTombstones(scene: Scene, rocks: Rock[], terrain: Terrain): 
       pitch: slimy ? 0 : (hash(i, 2) - 0.5) * 0.16,
       roll: slimy ? 0 : (hash(i, 3) - 0.5) * 0.14,
       scale: (r.r / 0.55) * (0.85 + hash(i, 4) * 0.3),
-      template, index: 0, fall: 0, fallDir: 1,
+      template, kind, rock, index: 0, gone: false, fall: 0, fallDir: 1,
     };
     s.index = template.stone.thinInstanceAdd(stoneMatrix(s), false);
     template.glow.thinInstanceAdd(stoneMatrix(s), false);
@@ -330,13 +351,14 @@ export function buildTombstones(scene: Scene, rocks: Rock[], terrain: Terrain): 
     }
   }
   addSlime(scene, stones);
+  const graves = openGraves(scene);
 
   const falling: Tombstone[] = [];
   return {
     stones,
     topple(x, z, reach, max) {
       const near = stones
-        .filter((s) => s.fall === 0 && Math.hypot(s.x - x, s.z - z) <= reach)
+        .filter((s) => s.fall === 0 && !s.gone && Math.hypot(s.x - x, s.z - z) <= reach)
         .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))
         .slice(0, max);
       for (const s of near) {
@@ -346,6 +368,19 @@ export function buildTombstones(scene: Scene, rocks: Rock[], terrain: Terrain): 
         if (s.slime) for (const m of [s.slime.streak, s.slime.drop]) m.setEnabled(false);
       }
       return near.length > 0;
+    },
+    rise(rock) {
+      const s = stones.find((o) => o.rock === rock);
+      if (!s || s.gone) return undefined;
+      s.gone = true;
+      const hidden = Matrix.Scaling(0, 0, 0);
+      s.template.stone.thinInstanceSetMatrixAt(s.index, hidden);
+      s.template.glow.thinInstanceSetMatrixAt(s.index, hidden);
+      if (s.slime) for (const m of [s.slime.puddle, s.slime.streak, s.slime.drop]) m.setEnabled(false);
+      const i = falling.indexOf(s);
+      if (i >= 0) falling.splice(i, 1);
+      graves.dig(s);
+      return { kind: s.kind, scale: s.scale };
     },
     update(dt, t) {
       for (let i = falling.length - 1; i >= 0; i--) {
@@ -364,6 +399,129 @@ export function buildTombstones(scene: Scene, rocks: Rock[], terrain: Terrain): 
       animateSlime(stones, t);
     },
   };
+}
+
+// ----------------------------------------------------------------------------
+//  Open graves, and the tombstone a zombie wears on its head
+// ----------------------------------------------------------------------------
+
+function dirtMat(scene: Scene): StandardMaterial {
+  return material(scene, 'graveDirt', (m) => {
+    m.diffuseColor = new Color3(0.24, 0.17, 0.1);
+  });
+}
+
+function turfMat(scene: Scene): StandardMaterial {
+  return material(scene, 'graveTurf', (m) => {
+    m.diffuseColor = new Color3(0.2, 0.42, 0.14);
+    m.emissiveColor = new Color3(0.02, 0.06, 0.01);
+  });
+}
+
+/** Where tombstones came up: a hole with the dug-up earth heaped round it. */
+function openGraves(scene: Scene): { dig(s: Tombstone): void } {
+  let heap: Mesh | undefined, hole: Mesh | undefined;
+  return {
+    dig(s) {
+      if (!heap || !hole) {
+        heap = MeshBuilder.CreateTorus('graveHeap', { diameter: 1, thickness: 0.45, tessellation: 14 }, scene);
+        heap.material = dirtMat(scene);
+        hole = MeshBuilder.CreateDisc('graveHole', { radius: 0.5, tessellation: 14 }, scene);
+        hole.rotation.x = Math.PI / 2;
+        hole.material = material(scene, 'graveHole', (m) => {
+          m.diffuseColor = new Color3(0.03, 0.02, 0.02);
+        });
+        for (const m of [heap, hole]) {
+          m.isPickable = false;
+          m.isVisible = false; // only the instances show
+        }
+      }
+      const k = s.scale;
+      const h = heap.createInstance(`graveHeap${s.rock}`);
+      h.position.set(s.x, s.y + 0.04, s.z);
+      h.scaling.set(1.05 * k, 0.35, 0.8 * k);
+      h.rotation.y = s.yaw;
+      const o = hole.createInstance(`graveHole${s.rock}`);
+      o.position.set(s.x, s.y + 0.08, s.z);
+      o.scaling.set(0.9 * k, 0.65 * k, 1);
+      o.rotation.set(Math.PI / 2, s.yaw, 0);
+    },
+  };
+}
+
+/** Stone shapes for hats (plain meshes for instancing; the ones in the ground are thin instances). */
+const hatKinds = new WeakMap<Scene, Template[]>();
+
+/** How big a hat stone is next to the one in the ground. */
+const HAT_SCALE = 0.45;
+
+/**
+ * A clump of turf torn up with the grave, with the tombstone still stuck in
+ * it, to sit on a zombie's head. Built round the top of a humanoid's head
+ * (8 units across, 8 up from the neck); `unit` is the size of one unit.
+ * Returns the hat and its grass, which sways.
+ */
+export function buildTombstoneHat(scene: Scene, name: string, stone: StoneLook, unit: number): { hat: TransformNode; grass: TransformNode } {
+  let kinds = hatKinds.get(scene);
+  if (!kinds) {
+    kinds = templates(scene);
+    for (const k of kinds) for (const m of [k.stone, k.glow]) m.setEnabled(false);
+    hatKinds.set(scene, kinds);
+  }
+  const hat = new TransformNode(name, scene);
+  const top = 8 * unit;
+  const add = (m: Mesh) => {
+    m.parent = hat;
+    m.isPickable = false;
+    return m;
+  };
+
+  // The sod: dirt underneath, grass on top, a bit wider than the head.
+  const sod = add(MeshBuilder.CreateBox(`${name}-sod`, { width: 10 * unit, height: 1.6 * unit, depth: 10 * unit }, scene));
+  sod.position.y = top + 0.5 * unit;
+  sod.material = dirtMat(scene);
+  const lawn = add(MeshBuilder.CreateBox(`${name}-lawn`, { width: 10.4 * unit, height: 0.8 * unit, depth: 10.4 * unit }, scene));
+  lawn.position.y = top + 1.6 * unit;
+  lawn.material = turfMat(scene);
+  // Clods and tufts hanging over the edges.
+  const rand = rng(name.length * 7 + name.charCodeAt(name.length - 1));
+  for (let i = 0; i < 6; i++) {
+    const a = rand() * Math.PI * 2;
+    const clod = add(MeshBuilder.CreateBox(`${name}-clod${i}`, { size: (1 + rand()) * unit }, scene));
+    clod.position.set(Math.cos(a) * 5 * unit, top - rand() * 1.5 * unit, Math.sin(a) * 5 * unit);
+    clod.rotation.set(rand(), rand(), rand());
+    clod.material = i % 2 ? dirtMat(scene) : turfMat(scene);
+  }
+
+  // Blades of grass sticking up all over.
+  const grass = new TransformNode(`${name}-grass`, scene);
+  grass.parent = hat;
+  grass.position.y = top + 2 * unit;
+  const blades: Mesh[] = [];
+  for (let i = 0; i < 22; i++) {
+    const h = (1.5 + rand() * 2.5) * unit;
+    const b = MeshBuilder.CreateCylinder('blade', { height: h, diameterTop: 0, diameterBottom: 0.7 * unit, tessellation: 3 }, scene);
+    b.position.set((rand() - 0.5) * 9.5 * unit, h / 2, (rand() - 0.5) * 9.5 * unit);
+    b.rotation.set((rand() - 0.5) * 0.7, rand() * 3, (rand() - 0.5) * 0.7);
+    blades.push(b);
+  }
+  const lawnTufts = merge(blades, turfMat(scene), `${name}-blades`)!;
+  lawnTufts.parent = grass;
+
+  // The tombstone it came up under, stuck in the turf at a jaunty angle,
+  // inscription to the front.
+  const t = kinds[stone.kind % kinds.length];
+  const holder = new TransformNode(`${name}-stone`, scene);
+  holder.parent = hat;
+  holder.position.set(0, top + 0.6 * unit, -0.5 * unit);
+  holder.rotation.set(-0.08, Math.PI, 0.16);
+  holder.scaling.setAll(HAT_SCALE * stone.scale);
+  for (const src of [t.stone, t.glow]) {
+    const m = src.createInstance(`${name}-${src.name}`);
+    m.parent = holder;
+    m.isPickable = false;
+  }
+  return { hat, grass };
 }
 
 // ----------------------------------------------------------------------------
@@ -412,7 +570,7 @@ function addSlime(scene: Scene, stones: Tombstone[]): void {
 function animateSlime(stones: Tombstone[], t: number): void {
   for (const s of stones) {
     const sl = s.slime;
-    if (!sl) continue;
+    if (!sl || s.gone) continue;
     // The puddle swells and settles; a drop slides down the face and drips in.
     const k = Math.sin(t * 1.7 + sl.phase);
     sl.puddle.scaling.x = (0.9 + 0.08 * k) * s.scale;
@@ -900,7 +1058,7 @@ export function createGraveyard(
     for (let k = 0; k < 4; k++) {
       const s = stones[Math.floor(Math.random() * stones.length)];
       const d = Math.hypot(s.x - tx, s.z - tz);
-      if (s.fall === 0 && d < bestD) {
+      if (s.fall === 0 && !s.gone && d < bestD) {
         best = s;
         bestD = d;
       }

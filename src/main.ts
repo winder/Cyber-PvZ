@@ -413,7 +413,7 @@ engine.runRenderLoop(() => {
   camera.update(dt);
   renderer.sync(ui.paused ? 0 : dt * GAME_SPEED * ui.speed * spectacle.timeScale);
   renderer.setSelected(game.phase === 'build' ? ui.selectedPlant : null);
-  renderer.showEdges(game.phase === 'build' ? game.wavePreview().map((l) => l.edge) : []);
+  renderer.showEdges(game.phase === 'build' ? game.wavePreview().flatMap((l) => (l.edge === 'graves' ? [] : [l.edge])) : []);
   if (game.phase !== 'battle' && ui.aiming) {
     ui.aiming = null;
     renderer.setAim(false);

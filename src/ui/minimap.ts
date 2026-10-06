@@ -51,7 +51,8 @@ export class Minimap {
     ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = 'rgba(120, 100, 255, 0.55)';
-    for (const r of map.rocks) {
+    for (const [i, r] of map.rocks.entries()) {
+      if (this.game.risen.has(i)) continue;
       ctx.beginPath();
       ctx.arc(X(r.x), Z(r.z), r.r * s, 0, Math.PI * 2);
       ctx.fill();

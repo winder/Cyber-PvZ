@@ -1,5 +1,5 @@
 import {
-  ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type EdgeId, type PlantId,
+  ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type PlantId, type SpawnFrom,
 } from '../data/config';
 import type { Game } from '../sim/game';
 
@@ -17,7 +17,7 @@ export interface HudHandlers {
   onOverlay(): void;
 }
 
-const EDGE_NAMES: Record<EdgeId, string> = { north: 'North', south: 'South', east: 'East', west: 'West' };
+const EDGE_NAMES: Record<SpawnFrom, string> = { north: 'North', south: 'South', east: 'East', west: 'West', graves: 'the graves' };
 
 function $(id: string): HTMLElement {
   const el = document.getElementById(id);

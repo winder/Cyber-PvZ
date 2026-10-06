@@ -17,10 +17,12 @@
 import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
-export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian';
+export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
+/** Where a spawn group comes from: an edge, or up out of the tombstones (rocks) on the map. */
+export type SpawnFrom = EdgeId | 'graves';
 
 export interface PlantDef {
   name: string;
@@ -75,6 +77,14 @@ export interface ZombieDef {
   hair?: 'curly' | 'nest';
   /** Something held in the right hand. */
   weapon?: 'scythe';
+  /** Worn on the head: a clump of grass with the tombstone it rose from stuck in it. */
+  hat?: 'tombstone';
+  /**
+   * Coming up out of the graves: takes `time` seconds to climb out (standing
+   * still), from a tombstone at least `minPathDistance` from the nearest base
+   * along the way zombies walk (so not right on top of the defense).
+   */
+  rise?: { time: number; minPathDistance: number };
   /** Gets a boss health bar and announcements. */
   boss?: boolean;
   /** Bodyguards that spawn alongside this zombie and escort it. */
@@ -204,6 +214,23 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     color: '#ff8a3d',
     model: 'jetpackHumanoid',
     skin: 'skins/jetpack.png',
+  },
+  // Bursts up out of a grave with its tombstone on its head. The stone is
+  // a helmet: it soaks up some of every hit.
+  tombstone: {
+    name: 'Tombstone Zombie',
+    icon: '🪦',
+    hp: 220,
+    speed: 0.9,
+    dps: 25,
+    armor: 0.35,
+    flying: false,
+    radius: 0.4,
+    color: '#8fae6a',
+    model: 'humanoid',
+    skin: 'skins/tombstone.png',
+    hat: 'tombstone',
+    rise: { time: 1.6, minPathDistance: 22 },
   },
   // ZomWes 8000's bodyguards. They march beside him and slash plants near him.
   guardian: {
@@ -675,12 +702,14 @@ const JUNGLE_THEME: ThemeDef = {
 // ---------------------------------------------------------------------------
 //  WAVES
 //  Each group spawns `count` zombies of `zombie` from `edge`, one every
-//  `every` seconds, starting `delay` seconds into the wave.
+//  `every` seconds, starting `delay` seconds into the wave. An `edge` of
+//  'graves' raises them out of tombstones instead.
 // ---------------------------------------------------------------------------
 
 export interface SpawnGroup {
   zombie: ZombieId;
-  edge: EdgeId;
+  /** An edge, or 'graves': up out of tombstones on the map (see `ZombieDef.rise`). */
+  edge: SpawnFrom;
   count: number;
   every: number;
   delay: number;
@@ -717,8 +746,21 @@ export const WAVES: SpawnGroup[][] = [
   ],
 ];
 
-/** The same waves, but every zombie comes in through the back gate. */
-const GRAVEYARD_WAVES: SpawnGroup[][] = WAVES.map((wave) => wave.map((g) => ({ ...g, edge: 'north' })));
+/**
+ * The same waves, but every zombie comes in through the back gate, and from
+ * wave 2 Tombstone Zombies climb out of the graves as well.
+ */
+const GRAVE_RISERS: SpawnGroup[][] = [
+  [],
+  [{ zombie: 'tombstone', edge: 'graves', count: 3, every: 4, delay: 8 }],
+  [{ zombie: 'tombstone', edge: 'graves', count: 4, every: 3, delay: 6 }],
+  [{ zombie: 'tombstone', edge: 'graves', count: 5, every: 2.5, delay: 5 }],
+  [{ zombie: 'tombstone', edge: 'graves', count: 5, every: 2.5, delay: 8 }],
+];
+const GRAVEYARD_WAVES: SpawnGroup[][] = WAVES.map((wave, i) => [
+  ...wave.map((g): SpawnGroup => ({ ...g, edge: 'north' })),
+  ...GRAVE_RISERS[i],
+]);
 
 // ---------------------------------------------------------------------------
 //  LEVELS

@@ -14,7 +14,7 @@ Code: `LevelDef`.
 
 **Wave** — One round of zombies. A level has 5; the last is the **final
 wave**, where the **Boss** appears. Each wave is a list of **Spawn groups**
-(zombie type, **Edge**, count, interval, delay).
+(zombie type, **Edge** or `'graves'`, count, interval, delay).
 
 **Build phase** / **Battle phase** — The two halves of every wave. In the
 build phase the player places, sells and turns **Plants** with no time
@@ -51,7 +51,8 @@ Code: `src/sim/shapes.ts`.
 **Rock** — An obstacle zombies and plants can't use. On Rust Corridor rocks
 are drawn as **Car wrecks**, on Cyber Cemetery as **Tombstones** (in rows),
 on Crash Jungle as crashed spaceships (**Wrecks**); the rules don't change. A rock can carry a `look` to be drawn as a landmark
-instead, like the **Gazebo**. Code: `Rock`.
+instead, like the **Gazebo**. Rocks a **Tombstone Zombie** rises out of
+leave the map. Code: `Rock`.
 
 **Mound** — One big hill raised out of the ground, flat on top (Cyber
 Cemetery's gazebo hill). Looks only: zombies walk over it as if it were flat.
@@ -97,6 +98,17 @@ ago. Configurable to trigger on its own health instead (`wanderOn`).
 **escort** the boss in formation **slots** (left, right, behind) and
 **sweep** (hit every plant in reach). If the boss falls they carry on alone.
 Code: `Zombie.leader`, `Zombie.slot`, `ZombieDef.guards`, `ZombieDef.sweep`.
+
+**Tombstone Zombie** — A Cyber Cemetery zombie that **rises** out of a
+tombstone instead of walking in: the rock is gone for good (the way through
+opens up), and it climbs out wearing a clump of grass with that same
+tombstone stuck in it. Only graves far enough from the bases along the
+zombies' route rise. The stone is a helmet (armor). Spawn groups for it come
+from `'graves'`. Code: `ZombieDef.rise`, `ZombieDef.hat`, `Zombie.grave`,
+`Game.risen`.
+
+**Open grave** — The hole and heap of dug-up earth left where a tombstone
+rose. Looks only.
 
 **Gait** — How a model moves: an ordinary walk, or the Guardians'
 **leap-and-slice**. Code: `ModelDef.gait`.

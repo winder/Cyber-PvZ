@@ -11,6 +11,7 @@ import {
 import { skinUnits, type ModelId } from '../models/models';
 import { getCustomSkin } from '../skins';
 import { createBrain } from './brain';
+import { buildTombstoneHat, type StoneLook } from './graveyard';
 import { buildHair } from './hair';
 import { attachWeapon } from './weapons';
 
@@ -334,10 +335,11 @@ export function createPlantVisual(scene: Scene, mats: Materials, type: PlantId, 
   return plantFactories[type](scene, mats, name);
 }
 
-export function createZombieVisual(scene: Scene, mats: Materials, type: ZombieId, name: string): Visual {
+/** `stone`: for zombies wearing a tombstone, the one it rose out of (any will do otherwise). */
+export function createZombieVisual(scene: Scene, mats: Materials, type: ZombieId, name: string, stone?: StoneLook): Visual {
   const def = ZOMBIES[type];
   if (def.art) return standee(scene, mats, def.art, 1.8, name);
-  if (def.model) return skinnedZombie(scene, mats, type, name);
+  if (def.model) return skinnedZombie(scene, mats, type, name, stone);
   return (zombieFactories[type] ?? zombieFactories.cyborg!)(scene, mats, name);
 }
 
@@ -387,7 +389,7 @@ function zombieTemplate(scene: Scene, type: ZombieId): BlockTemplate {
   return t;
 }
 
-function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: string): Visual {
+function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: string, stone?: StoneLook): Visual {
   const character = zombieTemplate(scene, type).spawn(name, scene);
   const pack = character.joints.jetpack;
   if (pack) {
@@ -415,7 +417,17 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
       hair.rotation.x = moving ? -0.03 : 0;
     };
   }
-  return { root: character.root, height: 1.7, character, update };
+  if (def.hat === 'tombstone' && character.joints.head) {
+    const look = stone ?? { kind: name.length % 4, scale: 1 };
+    const { hat, grass } = buildTombstoneHat(scene, `${name}-hat`, look, UNIT);
+    hat.parent = character.joints.head;
+    update = (time, moving) => {
+      // The grass sways, and shakes as it lurches along.
+      grass.rotation.z = Math.sin(time * 1.6 + name.length) * 0.06 + (moving ? Math.sin(time * 9) * 0.04 : 0);
+      grass.rotation.x = Math.sin(time * 1.1) * 0.04;
+    };
+  }
+  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update };
 }
 
 export function createStructureVisual(scene: Scene, mats: Materials, type: StructureId, name: string): Visual {

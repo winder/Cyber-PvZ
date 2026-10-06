@@ -4,7 +4,7 @@ import {
 } from '@babylonjs/core';
 import { type EdgeId, type LevelDef } from '../data/config';
 import { buildCarWreck, createRuinedCity, type Decor } from './decor';
-import { buildTombstones, createGraveyard } from './graveyard';
+import { buildTombstones, createGraveyard, type Tombstones } from './graveyard';
 import { createJungle } from './jungle';
 import { streetTexture } from './streetTexture';
 import { RAVINE_DEPTH, Terrain } from './terrain';
@@ -19,6 +19,8 @@ export interface World {
   terrain: Terrain;
   /** Animated scenery (lamps, tumbleweeds), if the level has any. */
   decor?: Decor;
+  /** The graveyard's tombstones, which Tombstone Zombies rise out of. */
+  tombstones?: Tombstones;
   /**
    * Scale the theme's lights (1 = normal) and add a flash of white on top.
    * Cinematics and weather multiply their dimming together before calling this.
@@ -131,7 +133,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
 
   // Tombstones are drawn all together (thin instances); landmarks like the
   // gazebo are drawn by the decor.
-  const tombstones = theme.rocks === 'tombstone' ? buildTombstones(scene, map.rocks.filter((r) => !r.look), terrain) : undefined;
+  const tombstones = theme.rocks === 'tombstone' ? buildTombstones(scene, map.rocks, terrain) : undefined;
   for (const [i, r] of map.rocks.entries()) {
     // Ship wrecks are drawn by the jungle decor.
     if (r.look || tombstones || theme.rocks === 'shipWreck') continue;
@@ -185,5 +187,5 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     hemi.diffuse = Color3.Lerp(hex(theme.light), new Color3(0.8, 0.85, 1), Math.min(1, flash));
   };
 
-  return { scene, mats, ground, glow, edgeMarkers, terrain, decor, setLighting };
+  return { scene, mats, ground, glow, edgeMarkers, terrain, decor, tombstones, setLighting };
 }
