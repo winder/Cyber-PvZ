@@ -5,6 +5,7 @@ import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type
 import type { Game, SimEvent } from '../sim/game';
 import { animate, LEAP_SECONDS, UNIT } from './blockModel';
 import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
+import { RangeRing, RING_GROUP } from './rangeRing';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
 } from './visuals';
@@ -43,9 +44,7 @@ export class Renderer {
   private effects: Effect[] = [];
   private ghost: TransformNode | null = null;
   private ghostType: PlantId | null = null;
-  private ghostRing: Mesh;
-  private ghostBad: StandardMaterial;
-  private ghostGood: StandardMaterial;
+  private ghostRing: RangeRing;
   private selectRing: Mesh;
   private aimRing: Mesh;
   private beamMats: Record<string, StandardMaterial> = {};
@@ -74,19 +73,7 @@ export class Renderer {
     this.buildStructures();
     this.deathStage = { scene, mats: world.mats, terrain: world.terrain, shake: (a) => this.shake(a) };
 
-    this.ghostGood = new StandardMaterial('ghostGood', scene);
-    this.ghostGood.emissiveColor = new Color3(0.3, 1, 0.5);
-    this.ghostGood.alpha = 0.25;
-    this.ghostGood.disableLighting = true;
-    this.ghostBad = new StandardMaterial('ghostBad', scene);
-    this.ghostBad.emissiveColor = new Color3(1, 0.2, 0.2);
-    this.ghostBad.alpha = 0.3;
-    this.ghostBad.disableLighting = true;
-
-    this.ghostRing = MeshBuilder.CreateDisc('ghostRing', { radius: 1, tessellation: 48 }, scene);
-    this.ghostRing.rotation.x = Math.PI / 2;
-    this.ghostRing.isPickable = false;
-    this.ghostRing.setEnabled(false);
+    this.ghostRing = new RangeRing(scene, world.terrain, (m) => world.glow.addExcludedMesh(m));
 
     this.selectRing = MeshBuilder.CreateTorus('selectRing', { diameter: 1.7, thickness: 0.08, tessellation: 32 }, scene);
     this.selectRing.material = world.mats.neon('#ffffff', 1.2);
@@ -254,6 +241,7 @@ export class Renderer {
       }
     }
     this.updatePops(dt);
+    this.ghostRing.update(dt);
     this.world.decor?.update(dt, g.zombies.some((z) => ZOMBIES[z.type].boss));
   }
 
@@ -521,12 +509,16 @@ export class Renderer {
       this.ghostType = type;
       if (type) {
         const v = createPlantVisual(this.world.scene, this.world.mats, type, 'ghost');
-        for (const m of v.root.getChildMeshes()) m.visibility = 0.45;
+        for (const m of v.root.getChildMeshes()) {
+          m.visibility = 0.45;
+          // Over its range ring, which is drawn over everything else.
+          m.renderingGroupId = RING_GROUP + 1;
+        }
         this.ghost = v.root;
       }
     }
     if (!type || !this.ghost) {
-      this.ghostRing.setEnabled(false);
+      this.ghostRing.hide();
       return;
     }
     const h = this.world.terrain.terrainHeight(x, z);
@@ -534,10 +526,7 @@ export class Renderer {
     this.ghost.rotation.y = -angle;
     const wall = PLANTS[type].wall;
     const range = PLANTS[type].attack?.range ?? (wall ? wall.length / 2 + 0.3 : PLANTS[type].radius + 0.3);
-    this.ghostRing.setEnabled(true);
-    this.ghostRing.position.set(x, h + 0.1, z);
-    this.ghostRing.scaling.setAll(range);
-    this.ghostRing.material = valid ? this.ghostGood : this.ghostBad;
+    this.ghostRing.show(x, z, range, valid);
   }
 
   setSelected(plantId: number | null): void {
