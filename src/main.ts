@@ -1,7 +1,7 @@
 import { Engine } from '@babylonjs/core';
 import { Audio } from './audio';
 import {
-  ABILITIES, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId,
+  ABILITIES, BOSSES, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId, type ZombieId,
 } from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { isRotatable } from './sim/shapes';
@@ -41,13 +41,23 @@ function pickLevel(): LevelDef {
 }
 const level = pickLevel();
 
-const game = new Game(Date.now() & 0xffff, level);
+/** Which boss the final wave brings: ?boss=captain (or zomwes). Random if not given. */
+function pickBoss(): ZombieId | undefined {
+  const want = new URLSearchParams(location.search).get('boss');
+  return BOSSES.find((b) => b === want);
+}
+
+const game = new Game(Date.now() & 0xffff, level, { boss: pickBoss() });
 const world = createWorld(engine, level);
 const renderer = new Renderer(world, game);
 const camera = makeCamera();
 renderer.shake = (amount) => camera.shake(amount);
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, game, (x, z) => camera.lookAt(x, z));
 const hud = makeHud();
+renderer.notify = (text, sound) => {
+  hud.toast(text, 3000);
+  if (sound) audio.play(sound);
+};
 const spectacle = new Spectacle(world, camera, game, level, {
   sound: (id) => audio.play(id),
   card: (title, subtitle, note) => hud.showCard(title, subtitle, note),
@@ -296,6 +306,9 @@ function react(events: SimEvent[]): void {
       // Its entrance (name card and all) is staged by the Spectacle.
       case 'bossSpawn': audio.play('bossRoar'); break;
       case 'stomp': audio.play('stomp'); break;
+      case 'rocketFired': audio.play('rocket'); break;
+      case 'rocketHit': audio.play('rocketBoom'); break;
+      case 'summoned': audio.play('summon'); break;
       case 'wander':
         hud.toast(`👣 ${ZOMBIES[e.type].name} is stomping toward the ${STRUCTURES[game.structures[e.to].type].name}!`, 3000);
         break;

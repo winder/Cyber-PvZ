@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEVELS, PLANTS, ZOMBIES, type PlantId, type Rock, type StructureId } from '../src/data/config';
+import { BOSSES, LEVELS, PLANTS, ZOMBIES, type PlantId, type Rock, type StructureId, type ZombieId } from '../src/data/config';
 import { Game, TICK_RATE } from '../src/sim/game';
 
 const GRAVEYARD = LEVELS.find((l) => l.id === 'graveyard')!;
@@ -44,8 +44,8 @@ describe('Cyber Cemetery', () => {
 });
 
 /** Before each wave, buy from the shopping list in order; use abilities when rich. */
-function play(seed: number, plan: [PlantId, number, number][]): Game {
-  const g = new Game(seed, GRAVEYARD);
+function play(seed: number, plan: [PlantId, number, number][], boss?: ZombieId): Game {
+  const g = new Game(seed, GRAVEYARD, { boss });
   let next = 0;
   while (g.phase === 'build') {
     while (next < plan.length && g.sun >= PLANTS[plan[next][0]].cost) {
@@ -139,9 +139,12 @@ describe('Tombstone Zombie', () => {
 
 describe('Cyber Cemetery balance', () => {
   it('a sensible defense can win', () => {
-    let wins = 0;
-    for (const seed of [1, 2, 3]) if (play(seed, PLAN).phase === 'won') wins++;
-    expect(wins).toBeGreaterThanOrEqual(2);
+    // Whichever boss turns up.
+    for (const boss of BOSSES) {
+      let wins = 0;
+      for (const seed of [1, 2, 3]) if (play(seed, PLAN, boss).phase === 'won') wins++;
+      expect(wins, boss).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('doing nothing loses', () => {

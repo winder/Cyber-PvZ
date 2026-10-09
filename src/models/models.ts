@@ -17,7 +17,7 @@ export type PartRole =
   | 'head' | 'body' | 'armR' | 'armL' | 'legR' | 'legL' | 'jetpack'
   | 'footR' | 'footL' | 'driverBody' | 'driverHead'
   | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL';
-export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian';
+export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -91,6 +91,21 @@ export const MODELS: Record<ModelId, ModelDef> = {
       p.role === 'armR' ? { ...p, rest: [-0.5, 0, 0.15] as [number, number, number] }
       : p.role === 'armL' ? { ...p, rest: [-1.1, 0, 0.6] as [number, number, number] }
       : p),
+  },
+  // The Ship Captain: broad and armored, with huge arms that bulge at the
+  // shoulder. His right arm (a rocket launcher at the end) points forward;
+  // the left hangs ready, fist clenched. Packed into a 64-unit page.
+  captain: {
+    label: 'Ship Captain',
+    walkSwing: 0.45,
+    parts: [
+      { role: 'head', label: 'Head', size: [8, 8, 8], uv: [0, 0], pivot: [0, 23, 0], offset: [0, 4, 0] },
+      { role: 'body', label: 'Body', size: [10, 12, 6], uv: [32, 0], pivot: [0, 23, 0], offset: [0, -6, 0] },
+      { role: 'armR', label: 'Right arm', size: [5, 13, 5], taper: 1.35, uv: [0, 18], pivot: [8, 21.5, 0], offset: [0, -4.5, 0], rest: [-Math.PI / 2, 0, 0] },
+      { role: 'armL', label: 'Left arm', size: [5, 13, 5], taper: 1.35, uv: [20, 18], pivot: [-8, 21.5, 0], offset: [0, -4.5, 0], rest: [-0.15, 0, -0.18] },
+      { role: 'legR', label: 'Right leg', size: [5, 11, 5], uv: [0, 38], pivot: [2.7, 11, 0], offset: [0, -5.5, 0] },
+      { role: 'legL', label: 'Left leg', size: [5, 11, 5], uv: [20, 38], pivot: [-2.7, 11, 0], offset: [0, -5.5, 0] },
+    ],
   },
   // ZomWes 8000's walker: a hulking robot on bell-bottom legs, with a little
   // driver on its head pulling levers. From Wesley's drawing.

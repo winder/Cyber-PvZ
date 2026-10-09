@@ -17,7 +17,7 @@
 import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
-export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone';
+export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
@@ -75,15 +75,17 @@ export interface ZombieDef {
   scale?: number;
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
-  /** Something held in the right hand. */
-  weapon?: 'scythe';
+  /** Something held in (or in place of) the right hand. */
+  weapon?: 'scythe' | 'rocketLauncher';
+  /** A pet that rides on its shoulder. Looks only. */
+  pet?: 'parrot';
   /** Worn on the head: a clump of grass with the tombstone it rose from stuck in it. */
   hat?: 'tombstone';
   /**
    * A death animation only this zombie has, played instead of a common one
    * some of the time. Looks only.
    */
-  death?: 'jetpackBlast' | 'shieldSquish';
+  death?: 'jetpackBlast' | 'shieldSquish' | 'goDownWithShip';
   /**
    * Coming up out of the graves: takes `time` seconds to climb out (standing
    * still), from a tombstone at least `minPathDistance` from the nearest base
@@ -94,6 +96,17 @@ export interface ZombieDef {
   boss?: boolean;
   /** Bodyguards that spawn alongside this zombie and escort it. */
   guards?: { zombie: ZombieId; count: number };
+  /**
+   * Fires a rocket every `every` seconds at the nearest plant (or base) within
+   * `range`, while it walks. Rockets fly at `speed` and blow up where they
+   * land, hurting every plant within `radius` (and a base, if it's in reach).
+   */
+  rockets?: { range: number; damage: number; radius: number; every: number; speed: number };
+  /**
+   * Calls up `count` zombies around itself, then again after a random wait
+   * between `min` and `max` seconds (the first call comes after `first`).
+   */
+  summon?: { zombie: ZombieId; count: number; first: number; min: number; max: number };
   /** Attacks hit every plant within this distance (a wide swing). */
   sweep?: number;
   /**
@@ -256,7 +269,29 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     weapon: 'scythe',
     sweep: 2,
   },
-  // The final boss. Named after his creator.
+  // A final boss: an armored zombie sea captain with a rocket launcher for a
+  // right hand and a parrot on his shoulder. He calls up his crew as he goes.
+  captain: {
+    name: 'Ship Captain',
+    icon: '🏴‍☠️',
+    hp: 3600,
+    speed: 0.75,
+    dps: 60,
+    armor: 0.25,
+    flying: false,
+    radius: 1.1,
+    color: '#ff7a3d',
+    model: 'captain',
+    skin: 'skins/captain.png',
+    scale: 3,
+    weapon: 'rocketLauncher',
+    pet: 'parrot',
+    death: 'goDownWithShip',
+    boss: true,
+    rockets: { range: 10, damage: 60, radius: 1.6, every: 4, speed: 11 },
+    summon: { zombie: 'cyborg', count: 2, first: 6, min: 9, max: 16 },
+  },
+  // A final boss. Named after his creator.
   zomwes: {
     name: 'ZomWes 8000',
     icon: '👹',
@@ -278,6 +313,9 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     wanderOn: 'base',
   },
 };
+
+/** The final wave's boss is one of these, picked at random each game. */
+export const BOSSES: ZombieId[] = ['zomwes', 'captain'];
 
 export const STRUCTURES: Record<StructureId, StructureDef> = {
   greenhouse: {
@@ -710,7 +748,8 @@ const JUNGLE_THEME: ThemeDef = {
 //  WAVES
 //  Each group spawns `count` zombies of `zombie` from `edge`, one every
 //  `every` seconds, starting `delay` seconds into the wave. An `edge` of
-//  'graves' raises them out of tombstones instead.
+//  'graves' raises them out of tombstones instead. A boss in a group stands
+//  for whichever boss this game picked (see BOSSES).
 // ---------------------------------------------------------------------------
 
 export interface SpawnGroup {
@@ -833,6 +872,6 @@ export type SoundId =
   | 'laser' | 'cryo' | 'place' | 'sell' | 'chomp' | 'zombieDie' | 'plantDie'
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
   | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie'
-  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind';
+  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};

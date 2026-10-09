@@ -83,9 +83,19 @@ damages the plant until it's gone. Plants aren't walls to the pathfinder;
 they're expensive to cross (**Chew cost**), so zombies go round if that's
 cheaper.
 
-**Boss** — The final-wave zombie with a health bar and announcements:
-**ZomWes 8000**. Its body is the **Westbot** model. *Avoid:* "Wesbot",
-"Webot".
+**Boss** — The final-wave zombie with a health bar and announcements. Each
+game picks one at random (`BOSSES`; `?boss=` in the address to choose):
+**ZomWes 8000**, whose body is the **Westbot** model, or the **Ship
+Captain**. Code: `Game.boss`. *Avoid:* "Wesbot", "Webot".
+
+**Ship Captain** — A medium-sized boss in body armor with a rocket launcher
+for a right hand. He **fires rockets** (blast damage to every plant where
+one lands) as he walks, and every so often **summons** a few zombies around
+himself. His **parrot** rides on his shoulder, takes the odd lap round his
+head, and flies off to safety when he's nearly beaten (looks only). He
+**goes down with his ship**: a last rocket bursts into fireworks, he salutes
+and sinks into the ground. Code: `ZombieDef.rockets`, `ZombieDef.summon`,
+`ZombieDef.pet`, `Game.rockets`.
 
 **Giant** — A zombie that walks straight over rocks and ravines and
 **stomps** every plant near it when one is in the way (ZomWes).

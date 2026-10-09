@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STRUCTURES, ZOMBIES } from '../src/data/config';
+import { BOSSES, LEVELS, STRUCTURES, ZOMBIES, type ZombieId } from '../src/data/config';
 import { MODELS } from '../src/models/models';
 import { UNIT } from '../src/render/blockModel';
 import { Game, TICK_RATE, type SimEvent } from '../src/sim/game';
@@ -12,8 +12,8 @@ for (let ring = 0; ring < 3; ring++) for (const [bx, bz] of BASES) for (let k = 
   SPOTS.push([bx + Math.cos(a) * (4 + ring * 1.5) + 2, bz + Math.sin(a) * (4 + ring * 1.5) * 0.6]);
 }
 
-/** ZomWes alone against `n` laser peashooters. */
-function bossFight(n: number) {
+/** A boss (ZomWes unless said otherwise) alone against `n` laser peashooters. */
+function bossFight(n: number, type: ZombieId = 'zomwes') {
   const g = new Game(1);
   g.sun = 1e6;
   let placed = 0;
@@ -22,7 +22,7 @@ function bossFight(n: number) {
     if (g.place('laserPea', x, z).ok) placed++;
   }
   g.phase = 'battle';
-  const boss = g.spawn('zomwes', 'east');
+  const boss = g.spawn(type, 'east');
   const events: SimEvent[] = [];
   for (let i = 0; i < TICK_RATE * 400 && g.phase === 'battle' && boss.hp > 0; i++) {
     g.step();
@@ -33,8 +33,8 @@ function bossFight(n: number) {
 }
 
 describe('ZomWes 8000', () => {
-  it('is in the final wave', () => {
-    const g = new Game();
+  it('is in the final wave when he is the boss', () => {
+    const g = new Game(1, LEVELS[0], { boss: 'zomwes' });
     g.wave = g.totalWaves - 1;
     expect(g.wavePreview().some((l) => l.zombie === 'zomwes')).toBe(true);
   });
@@ -95,7 +95,7 @@ describe('ZomWes 8000', () => {
   });
 
   it('shows the guardians in the final wave preview', () => {
-    const g = new Game();
+    const g = new Game(1, LEVELS[0], { boss: 'zomwes' });
     g.wave = g.totalWaves - 1;
     expect(g.wavePreview().find((l) => l.zombie === 'guardian')?.count).toBe(3);
   });
@@ -119,5 +119,87 @@ describe('ZomWes 8000', () => {
     const robot = top(['head', 'body']) * UNIT * def.scale!;
     expect(robot).toBeGreaterThan(15);
     expect(top(['driverHead'])).toBeGreaterThan(top(['head']));
+  });
+});
+
+describe('the final boss', () => {
+  it('is picked at random each game', () => {
+    const picks = new Set<ZombieId>();
+    for (let seed = 1; seed <= 20; seed++) picks.add(new Game(seed).boss);
+    expect([...picks].sort()).toEqual([...BOSSES].sort());
+  });
+
+  it('stands in for the boss in the final wave', () => {
+    const g = new Game(1, LEVELS[0], { boss: 'captain' });
+    g.wave = g.totalWaves - 1;
+    const lines = g.wavePreview();
+    expect(lines.some((l) => l.zombie === 'captain')).toBe(true);
+    expect(lines.some((l) => l.zombie === 'zomwes' || l.zombie === 'guardian')).toBe(false);
+  });
+});
+
+describe('Ship Captain', () => {
+  it('fires rockets that blow up every plant near where they land', () => {
+    const g = new Game(1, LEVELS[0], { boss: 'captain' });
+    const a = g.place('forceNut', 4, 12), b = g.place('forceNut', 4, 13.2);
+    g.phase = 'battle';
+    const boss = g.spawn('captain', 'east');
+    boss.x = 10; boss.z = 12.5;
+    const events: SimEvent[] = [];
+    for (let i = 0; i < TICK_RATE * 2; i++) {
+      boss.x = 10; boss.z = 12.5; // hold him at range
+      g.step();
+      events.push(...g.drainEvents());
+    }
+    expect(events.some((e) => e.t === 'rocketFired')).toBe(true);
+    expect(events.some((e) => e.t === 'rocketHit')).toBe(true);
+    if (a.ok && b.ok) {
+      expect(a.plant.hp).toBeLessThan(1800);
+      expect(b.plant.hp).toBeLessThan(1800);
+    }
+  });
+
+  it('calls up his crew around him, again and again', () => {
+    const g = new Game(1, LEVELS[0], { boss: 'captain' });
+    g.phase = 'battle';
+    const boss = g.spawn('captain', 'east');
+    const events: SimEvent[] = [];
+    let first: number[] | undefined;
+    for (let i = 0; i < TICK_RATE * 40; i++) {
+      g.step();
+      for (const e of g.drainEvents()) {
+        events.push(e);
+        // They appear right next to him.
+        if (e.t === 'summoned' && !first) {
+          first = e.ids;
+          for (const id of e.ids) {
+            const z = g.zombies.find((o) => o.id === id)!;
+            expect(z.type).toBe(ZOMBIES.captain.summon!.zombie);
+            expect(Math.hypot(z.x - boss.x, z.z - boss.z)).toBeLessThan(3);
+          }
+        }
+      }
+    }
+    expect(events.filter((e) => e.t === 'summoned').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('20 plants take him down', () => {
+    const { boss } = bossFight(20, 'captain');
+    expect(boss.hp).toBeLessThanOrEqual(0);
+  });
+
+  it('6 plants are not enough', () => {
+    const { g, boss } = bossFight(6, 'captain');
+    expect(boss.hp > 0 || g.phase === 'lost').toBe(true);
+  });
+
+  it('is medium sized: bigger than a Guardian, far smaller than ZomWes', () => {
+    const height = (id: ZombieId) => {
+      const def = ZOMBIES[id];
+      const parts = MODELS[def.model!].parts;
+      return Math.max(...parts.map((p) => p.pivot[1] + p.offset[1] + p.size[1] / 2)) * UNIT * (def.scale ?? 1);
+    };
+    expect(height('captain')).toBeGreaterThan(height('guardian') * 1.2);
+    expect(height('captain')).toBeLessThan(height('zomwes') / 2);
   });
 });

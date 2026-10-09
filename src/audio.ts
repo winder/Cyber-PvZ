@@ -122,12 +122,19 @@ const SYNTHS: Record<SoundId, Synth> = {
   slowMo: seq([0, tone('sine', 320, 50, 1.4, 0.18)], [0, whoosh(1.4, 0.25, 200, 900)]),
   thunder: seq([0, noise(0.15, 0.6, 3000)], [0.05, noise(2.6, 0.7, 260)], [0, tone('sine', 50, 28, 2, 0.3)]),
   wind: whoosh(4, 0.3, 250, 1100),
+  rocket: seq([0, noise(0.5, 0.25, 1500)], [0, tone('sawtooth', 220, 520, 0.4, 0.06)]),
+  rocketBoom: seq([0, noise(0.6, 0.5, 900)], [0, tone('sine', 90, 35, 0.5, 0.35)]),
+  summon: seq(
+    [0, tone('square', 196, 196, 0.18, 0.08)], [0.18, tone('square', 262, 262, 0.18, 0.08)],
+    [0.36, tone('square', 330, 392, 0.4, 0.08)], [0.2, noise(0.6, 0.25, 400)],
+  ),
+  squawk: seq([0, tone('sawtooth', 1400, 900, 0.12, 0.08)], [0.14, tone('sawtooth', 1500, 800, 0.18, 0.08)]),
   click: tone('square', 900, 900, 0.03, 0.04),
   error: tone('square', 160, 120, 0.15, 0.08),
 };
 
 /** Minimum seconds between repeats so a swarm of lasers doesn't deafen anyone. */
-const THROTTLE: Partial<Record<SoundId, number>> = { laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4, thunder: 0.8, crumble: 0.5 };
+const THROTTLE: Partial<Record<SoundId, number>> = { rocketBoom: 0.15, laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4, thunder: 0.8, crumble: 0.5 };
 
 export class Audio {
   private ctx: AudioContext | null = null;

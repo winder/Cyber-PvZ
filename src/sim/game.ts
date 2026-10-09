@@ -1,5 +1,5 @@
 import {
-  ABILITIES, ECONOMY, LEVELS, PLANTS, STRUCTURES, ZOMBIES,
+  ABILITIES, BOSSES, ECONOMY, LEVELS, PLANTS, STRUCTURES, ZOMBIES,
   type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
 import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
@@ -53,6 +53,10 @@ export interface Zombie {
   grave: number;
   /** Seconds left climbing out of the grave (it stands still until then). */
   rising: number;
+  /** Rocketeers: seconds until it can fire again. */
+  reload: number;
+  /** Summoners: seconds until it calls up more zombies. */
+  summonIn: number;
 }
 
 export interface Structure {
@@ -68,6 +72,9 @@ export interface Structure {
 const ESCORT_DETOUR = 2;
 
 export interface Strike { x: number; z: number; timer: number }
+
+/** A rocket in flight, heading for (x, z). */
+export interface Rocket { x: number; z: number; timer: number; damage: number; radius: number }
 
 export type SimEvent =
   | { t: 'shot'; plantId: number; kind: PlantId; fromX: number; fromZ: number; toX: number; toZ: number; toAir: boolean }
@@ -85,6 +92,11 @@ export type SimEvent =
   | { t: 'structureDestroyed'; index: number }
   | { t: 'strikeTargeted'; x: number; z: number; delay: number }
   | { t: 'strikeHit'; x: number; z: number; radius: number }
+  /** `id`: who fired it. Lands at (toX, toZ) after `flight` seconds. */
+  | { t: 'rocketFired'; id: number; fromX: number; fromZ: number; toX: number; toZ: number; flight: number }
+  | { t: 'rocketHit'; x: number; z: number; radius: number }
+  /** `id`: who called them up; `ids`: the zombies that appeared. */
+  | { t: 'summoned'; id: number; ids: number[] }
   | { t: 'hyperSun' }
   | { t: 'waveStart'; wave: number }
   | { t: 'waveCleared'; wave: number; bonus: number }
@@ -123,6 +135,9 @@ export class Game {
   readonly zombies: Zombie[] = [];
   readonly structures: Structure[];
   readonly strikes: Strike[] = [];
+  readonly rockets: Rocket[] = [];
+  /** Which boss the final wave brings this game (it stands in for any boss in the waves). */
+  readonly boss: ZombieId;
   readonly nav: NavGrid;
   readonly cooldowns: Record<AbilityId, number> = { orbitalStrike: 0, hyperSun: 0 };
   /** Map rocks (by index) that have risen as zombies and are gone for good. */
@@ -142,9 +157,12 @@ export class Game {
   private structureHitTimer: number[];
   private readonly rand: () => number;
 
-  constructor(seed = 1, readonly level: LevelDef = LEVELS[0]) {
+  /** `boss`: pick the final wave's boss instead of leaving it to chance. */
+  constructor(seed = 1, readonly level: LevelDef = LEVELS[0], opts: { boss?: ZombieId } = {}) {
+    // Each boss stands in for any boss in the level's waves.
+    this.boss = opts.boss ?? BOSSES[Math.floor(mulberry32(seed ^ 0x5eed)() * BOSSES.length)];
     this.map = level.map;
-    this.waves = level.waves;
+    this.waves = level.waves.map((wave) => wave.map((g) => (ZOMBIES[g.zombie].boss ? { ...g, zombie: this.boss } : g)));
     this.totalWaves = level.waves.length;
     this.rand = mulberry32(seed);
     this.nav = new NavGrid(this.map.width, this.map.depth);
@@ -342,6 +360,7 @@ export class Game {
     this.updatePlants();
     this.updateZombies();
     this.updateStrikes();
+    this.updateRockets();
     this.removeDead();
     if (this.fieldDirty) this.refreshField();
     this.checkEnd();
@@ -396,6 +415,7 @@ export class Game {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
       leader: null, slot: 0, detour: 0, grave: -1, rising: 0,
+      reload: 0, summonIn: ZOMBIES[type].summon?.first ?? 0,
     };
     this.zombies.push(zombie);
     return zombie;
@@ -502,6 +522,8 @@ export class Game {
         zb.rising = Math.max(0, zb.rising - DT);
         continue;
       }
+      if (def.rockets) this.fireRocket(zb);
+      if (def.summon) this.summonCrew(zb);
 
       if (def.giant) {
         this.updateGiant(zb, speed);
@@ -550,6 +572,78 @@ export class Game {
       this.moveToward(zb, this.nav.centerX(next), this.nav.centerZ(next), speed * DT);
     }
     this.separateZombies();
+  }
+
+  /** Rocketeers fire at the nearest plant in range (or a base, if there's none), walking as they go. */
+  private fireRocket(zb: Zombie): void {
+    const r = ZOMBIES[zb.type].rockets!;
+    zb.reload -= DT;
+    if (zb.reload > 0) return;
+    let target: { x: number; z: number } | undefined;
+    let best = r.range;
+    for (const p of this.plants) {
+      if (p.hp <= 0) continue;
+      const d = distanceToPlant(p, zb.x, zb.z);
+      if (d <= best) {
+        best = d;
+        target = p;
+      }
+    }
+    if (!target) {
+      const s = this.nearestStructure(zb.x, zb.z);
+      if (s && Math.hypot(s.x - zb.x, s.z - zb.z) - STRUCTURES[s.type].radius <= r.range) {
+        // Aim at the near wall, not the middle.
+        const d = Math.hypot(s.x - zb.x, s.z - zb.z) || 1;
+        const k = (d - STRUCTURES[s.type].radius * 0.7) / d;
+        target = { x: zb.x + (s.x - zb.x) * k, z: zb.z + (s.z - zb.z) * k };
+      }
+    }
+    if (!target) return;
+    zb.reload = r.every;
+    const flight = Math.max(0.3, Math.hypot(target.x - zb.x, target.z - zb.z) / r.speed);
+    this.rockets.push({ x: target.x, z: target.z, timer: flight, damage: r.damage, radius: r.radius });
+    this.events.push({ t: 'rocketFired', id: zb.id, fromX: zb.x, fromZ: zb.z, toX: target.x, toZ: target.z, flight });
+  }
+
+  /** Rockets land: every plant in the blast is hurt, and any base it reaches. */
+  private updateRockets(): void {
+    for (let i = this.rockets.length - 1; i >= 0; i--) {
+      const r = this.rockets[i];
+      r.timer -= DT;
+      if (r.timer > 0) continue;
+      for (const p of this.plants) if (distanceToPlant(p, r.x, r.z) <= r.radius) p.hp -= r.damage;
+      for (const s of this.structures) {
+        if (s.alive && Math.hypot(s.x - r.x, s.z - r.z) <= STRUCTURES[s.type].radius + r.radius) this.damageStructure(s, r.damage);
+      }
+      this.events.push({ t: 'rocketHit', x: r.x, z: r.z, radius: r.radius });
+      this.rockets.splice(i, 1);
+    }
+  }
+
+  /** Summoners call up a few zombies in a ring around themselves, every so often. */
+  private summonCrew(zb: Zombie): void {
+    const s = ZOMBIES[zb.type].summon!;
+    zb.summonIn -= DT;
+    if (zb.summonIn > 0) return;
+    zb.summonIn = s.min + this.rand() * (s.max - s.min);
+    const ids: number[] = [];
+    const d = ZOMBIES[zb.type].radius + ZOMBIES[s.zombie].radius + 0.8;
+    const hw = this.map.width / 2 - 0.5, hd = this.map.depth / 2 - 0.5;
+    for (let k = 0; k < s.count; k++) {
+      // Spread round it, starting from a random side; skip spots in rocks and ravines.
+      const a0 = this.rand() * Math.PI * 2;
+      for (let tries = 0; tries < 8; tries++) {
+        const a = a0 + (k / s.count) * Math.PI * 2 + tries * 0.7;
+        const x = Math.max(-hw, Math.min(hw, zb.x + Math.cos(a) * d));
+        const z = Math.max(-hd, Math.min(hd, zb.z + Math.sin(a) * d));
+        if (this.nav.blocked[this.nav.cellOf(x, z)]) continue;
+        const minion = this.addZombie(s.zombie, x, z);
+        minion.facing = zb.facing;
+        ids.push(minion.id);
+        break;
+      }
+    }
+    if (ids.length) this.events.push({ t: 'summoned', id: zb.id, ids });
   }
 
   /** Chew (or, with a sweeping weapon, slash everything in reach). */
@@ -821,6 +915,7 @@ export class Game {
     const cleared = this.wave;
     for (const p of this.plants) p.hp = PLANTS[p.type].hp;
     this.strikes.length = 0;
+    this.rockets.length = 0;
     this.hyperTimer = 0;
     this.cooldowns.orbitalStrike = 0;
     this.cooldowns.hyperSun = 0;
@@ -863,6 +958,7 @@ export class Game {
     this.zombies.length = 0;
     this.struckDown.clear();
     this.strikes.length = 0;
+    this.rockets.length = 0;
     this.spawnQueue = [];
     this.waveTime = 0;
     this.hyperTimer = 0;

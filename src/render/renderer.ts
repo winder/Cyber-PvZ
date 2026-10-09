@@ -1,7 +1,7 @@
 import {
   Color3, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3,
 } from '@babylonjs/core';
-import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type ZombieId } from '../data/config';
+import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type SoundId, type ZombieId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
 import { animate, LEAP_SECONDS, UNIT } from './blockModel';
 import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
@@ -12,6 +12,11 @@ import {
 import type { World } from './world';
 
 const FLY_HEIGHT = 2.6;
+
+const smoothstep = (x: number) => {
+  const k = Math.min(1, Math.max(0, x));
+  return k * k * (3 - 2 * k);
+};
 /** How far below the ground a zombie starts climbing out of its grave (just the tombstone on its head showing). */
 const RISE_DEPTH = 1.8;
 
@@ -55,6 +60,12 @@ export class Renderer {
   private screenBits = 0;
   /** Shake the camera (wired up once the camera exists). */
   shake: (amount: number) => void = () => {};
+  /** A message for the player, with a sound (wired up to the HUD). */
+  notify: (text: string, sound?: SoundId) => void = () => {};
+  /** Rocketeers just fired (by id): how much kick is left in the arm. */
+  private recoil = new Map<number, number>();
+  /** Summoners calling up their crew (by id): seconds left with the arm raised. */
+  private beckon = new Map<number, number>();
   private deathStage: DeathStage;
   private barMats: StandardMaterial[] = [];
   private time = 0;
@@ -194,6 +205,12 @@ export class Renderer {
       if (character) {
         const { lift, stride } = animate(character, this.time, { moving: moving && !chewing, chewing, flying: def.flying }, z.id);
         t.visual.update?.(this.time, moving && !chewing);
+        this.gesture(z.id, character.joints.armR, character.joints.armL, dt);
+        const pet = t.visual.pet;
+        if (pet) {
+          pet.tick(dt, z.hp / def.hp);
+          if (pet.gone) this.petFlewOff(t.visual);
+        }
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
@@ -214,7 +231,8 @@ export class Renderer {
       } else {
         root.rotation.x = chewing ? 0.25 : 0;
       }
-      this.setBar(t.bar, z.hp / def.hp);
+      // Bosses have the big bar at the top of the screen instead.
+      this.setBar(t.bar, def.boss ? 1 : z.hp / def.hp);
     }
     for (const [id, t] of this.zombies) {
       if (!seenZombies.has(id)) {
@@ -245,6 +263,33 @@ export class Renderer {
     this.world.decor?.update(dt, g.zombies.some((z) => ZOMBIES[z.type].boss));
   }
 
+  /** Kick the launcher arm up after a shot; raise the free arm to call up the crew. */
+  private gesture(id: number, armR: TransformNode | undefined, armL: TransformNode | undefined, dt: number): void {
+    const kick = this.recoil.get(id);
+    if (kick !== undefined && armR) {
+      armR.rotation.x -= 0.6 * kick * kick;
+      if (kick - dt * 3 <= 0) this.recoil.delete(id);
+      else this.recoil.set(id, kick - dt * 3);
+    }
+    const beckon = this.beckon.get(id);
+    if (beckon !== undefined && armL) {
+      // Up goes the fist, shaking, then back down.
+      const up = smoothstep(Math.min(beckon, 1.4 - beckon) / 0.25);
+      armL.rotation.x += (-2.9 - armL.rotation.x) * up + Math.sin(this.time * 30) * 0.08 * up;
+      armL.rotation.z += 0.25 * up;
+      if (beckon - dt <= 0) this.beckon.delete(id);
+      else this.beckon.set(id, beckon - dt);
+    }
+  }
+
+  /** The pet's off: it flies away on its own, and the player hears about it. */
+  private petFlewOff(visual: Visual): void {
+    const pet = visual.pet!;
+    visual.pet = undefined;
+    this.effects.push(pet);
+    this.notify('🦜 The parrot flies away to safety!', 'squawk');
+  }
+
   // --------------------------------------------------------------------------
   //  Events → effects
   // --------------------------------------------------------------------------
@@ -256,7 +301,7 @@ export class Renderer {
         case 'shot': this.beam(e.fromX, e.fromZ, e.toX, e.toZ, e.toAir, PLANTS[e.kind].color); break;
         case 'zombieDied': {
           const def = ZOMBIES[e.type];
-          if (def.boss) {
+          if (def.boss && !def.death) {
             // A big one deserves a big finish.
             for (let i = 0; i < 6; i++) {
               const a = (i / 6) * Math.PI * 2;
@@ -278,6 +323,9 @@ export class Renderer {
           break;
         case 'structureDestroyed': this.destroyStructure(e.index); break;
         case 'graveRisen': this.dirtSpray(e.x, e.z); break;
+        case 'rocketFired': this.rocket(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight); break;
+        case 'rocketHit': this.explosion(e.x, e.z, e.radius); break;
+        case 'summoned': this.summoned(e.id, e.ids); break;
         case 'jumped': this.buildStructures(); break;
         default: break;
       }
@@ -384,6 +432,121 @@ export class Renderer {
     });
   }
 
+  /** A rocket from the launcher's muzzle, arcing over to land at (tx, tz) after `flight` seconds. */
+  private rocket(id: number, fx: number, fz: number, tx: number, tz: number, flight: number): void {
+    const { scene, mats } = this.world;
+    const shooter = this.zombies.get(id);
+    const muzzle = shooter?.visual.muzzle;
+    const type = this.game.zombies.find((z) => z.id === id)?.type;
+    const scale = type ? ZOMBIES[type].scale ?? 1 : 1;
+    const from = muzzle ? muzzle.getAbsolutePosition().clone() : new Vector3(fx, this.world.terrain.terrainHeight(fx, fz) + 2.5, fz);
+    const to = new Vector3(tx, this.world.terrain.terrainHeight(tx, tz) + 0.2, tz);
+    this.recoil.set(id, 1);
+    this.burst(from.x, from.z, '#ffb21f', from.y);
+    for (let i = 0; i < 3; i++) this.smokePuff(from, 0.25 * scale, 0.7);
+
+    const rocket = new TransformNode('rocket', scene);
+    const body = MeshBuilder.CreateCylinder('rocketBody', { height: 0.7, diameter: 0.2, tessellation: 8 }, scene);
+    body.material = mats.dark('#cfd4dc');
+    body.rotation.x = Math.PI / 2;
+    body.parent = rocket;
+    const nose = MeshBuilder.CreateCylinder('rocketNose', { height: 0.25, diameterTop: 0, diameterBottom: 0.2, tessellation: 8 }, scene);
+    nose.material = mats.neon('#ff3c2c', 0.8);
+    nose.rotation.x = Math.PI / 2;
+    nose.position.z = 0.47;
+    nose.parent = rocket;
+    const fins = MeshBuilder.CreateBox('rocketFins', { width: 0.45, height: 0.45, depth: 0.12 }, scene);
+    fins.material = mats.neon('#ff3c2c', 0.6);
+    fins.position.z = -0.3;
+    fins.rotation.z = Math.PI / 4;
+    fins.parent = rocket;
+    const flame = MeshBuilder.CreateCylinder('rocketFlame', { height: 0.5, diameterTop: 0.22, diameterBottom: 0, tessellation: 6 }, scene);
+    flame.material = mats.neon('#ffb21f', 1.8);
+    flame.rotation.x = Math.PI / 2;
+    flame.position.z = -0.6;
+    flame.parent = rocket;
+    for (const m of rocket.getChildMeshes()) m.isPickable = false;
+    rocket.scaling.setAll(Math.max(1, scale * 0.5));
+
+    const arc = 1.5 + Vector3.Distance(from, to) * 0.18;
+    const at = (k: number) => Vector3.Lerp(from, to, k).add(new Vector3(0, Math.sin(k * Math.PI) * arc, 0));
+    let t = 0, trail = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        const k = Math.min(1, t / flight);
+        const p = at(k);
+        rocket.position.copyFrom(p);
+        // Nose along the arc.
+        rocket.lookAt(p.add(at(Math.min(1, k + 0.02)).subtract(at(Math.max(0, k - 0.02)))));
+        rocket.rotation.z = t * 12; // spinning
+        flame.scaling.y = 0.7 + Math.random() * 0.8;
+        trail -= dt;
+        if (trail <= 0) {
+          trail = 0.04;
+          this.smokePuff(p, 0.22, 0.6);
+        }
+        return k < 1;
+      },
+      dispose: () => rocket.dispose(),
+    });
+  }
+
+  /** KABOOM where a rocket lands: a fireball, smoke, and a scorch ring. */
+  private explosion(x: number, z: number, radius: number): void {
+    const y = this.world.terrain.terrainHeight(x, z);
+    this.burst(x, z, '#ffe14d', y + 0.4);
+    this.burst(x + 0.3, z - 0.2, '#ff6a2a', y + 0.8);
+    const at = new Vector3(x, y + 0.5, z);
+    for (let i = 0; i < 4; i++) this.smokePuff(at.add(new Vector3(Math.random() - 0.5, Math.random() * 0.5, Math.random() - 0.5).scale(radius)), 0.6, 1.1);
+    const ring = MeshBuilder.CreateTorus('rocketRing', { diameter: radius * 2, thickness: 0.18, tessellation: 32 }, this.world.scene);
+    ring.material = this.world.mats.neon('#ff8a3d', 1.4, 0.8);
+    ring.position.set(x, y + 0.1, z);
+    ring.isPickable = false;
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        ring.scaling.setAll(0.3 + t * 2.5);
+        ring.visibility = Math.max(0, 1 - t / 0.45);
+        return t < 0.45;
+      },
+      dispose: () => ring.dispose(),
+    });
+    this.shake(0.15);
+  }
+
+  /** A puff of grey smoke that drifts up and thins out. */
+  private smokePuff(at: Vector3, size: number, life: number): void {
+    const mesh = MeshBuilder.CreateIcoSphere('smoke', { radius: size, subdivisions: 1 }, this.world.scene);
+    mesh.material = this.world.mats.dark('#8a8a90');
+    mesh.position.copyFrom(at);
+    mesh.isPickable = false;
+    const drift = new Vector3((Math.random() - 0.5) * 0.4, 0.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.4);
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        mesh.position.addInPlace(drift.scale(dt));
+        mesh.scaling.setAll(1 + (t / life) * 2);
+        mesh.visibility = Math.max(0, 0.8 * (1 - t / life));
+        return t < life;
+      },
+      dispose: () => mesh.dispose(),
+    });
+  }
+
+  /** The captain throws up a fist, and his crew bursts up out of the ground around him. */
+  private summoned(id: number, ids: number[]): void {
+    this.beckon.set(id, 1.4);
+    for (const zid of ids) {
+      const z = this.game.zombies.find((o) => o.id === zid);
+      if (!z) continue;
+      this.dirtSpray(z.x, z.z);
+      this.burst(z.x, z.z, '#7dff4d', this.world.terrain.terrainHeight(z.x, z.z) + 0.8);
+    }
+  }
+
   /** Clods of earth thrown up as something bursts out of a grave. */
   private dirtSpray(x: number, z: number): void {
     const { scene } = this.world;
@@ -429,6 +592,13 @@ export class Renderer {
   private die(id: number, t: Tracked): void {
     const plan = this.dying.get(id);
     this.dying.delete(id);
+    this.recoil.delete(id);
+    this.beckon.delete(id);
+    // Anything riding on it gets away first.
+    if (t.visual.pet) {
+      t.visual.pet.flee();
+      this.petFlewOff(t.visual);
+    }
     if (plan) {
       t.bar.dispose();
       const effect = playDeath(plan.kind, t.visual, this.deathStage, plan);

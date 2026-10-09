@@ -13,6 +13,7 @@ import { getCustomSkin } from '../skins';
 import { createBrain } from './brain';
 import { buildTombstoneHat, type StoneLook } from './graveyard';
 import { buildHair } from './hair';
+import { Parrot } from './parrot';
 import { attachWeapon } from './weapons';
 
 /**
@@ -27,6 +28,10 @@ export interface Visual {
   character?: BlockCharacter;
   /** Extra per-frame animation (e.g. bouncing hair). */
   update?(time: number, moving: boolean): void;
+  /** Where its shots come out (a rocket launcher's muzzle). */
+  muzzle?: TransformNode;
+  /** A pet riding on it, until it flies off. */
+  pet?: Parrot;
 }
 
 /** Shared neon materials, one per color+style. */
@@ -403,7 +408,16 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
   const def = ZOMBIES[type];
   const scale = def.scale ?? 1;
   character.root.scaling.setAll(scale);
-  if (def.weapon) attachWeapon(scene, character, def.weapon, `${name}-weapon`);
+  const weapon = def.weapon ? attachWeapon(scene, character, def.weapon, `${name}-weapon`) : null;
+  const muzzle = weapon?.getChildTransformNodes(true).find((n) => n.name.endsWith('-muzzle'));
+  let pet: Parrot | undefined;
+  if (def.pet === 'parrot' && character.joints.body) {
+    // On top of the left shoulder.
+    const perch = new TransformNode(`${name}-perch`, scene);
+    perch.parent = character.joints.body;
+    perch.position.set(-8.4 * UNIT, 0.7 * UNIT, 0);
+    pet = new Parrot(scene, `${name}-parrot`, perch, character.root);
+  }
   let update: Visual['update'];
   if (def.hair && character.joints.head) {
     const hair = hairTemplate(scene, def.hair, def.model!).createInstance(`${name}-hair`);
@@ -427,7 +441,7 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
       grass.rotation.x = Math.sin(time * 1.1) * 0.04;
     };
   }
-  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update };
+  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet };
 }
 
 export function createStructureVisual(scene: Scene, mats: Materials, type: StructureId, name: string): Visual {

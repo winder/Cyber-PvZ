@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEVELS, PLANTS, type PlantId } from '../src/data/config';
+import { BOSSES, LEVELS, PLANTS, type PlantId, type ZombieId } from '../src/data/config';
 import { Game, TICK_RATE } from '../src/sim/game';
 
 const RUST = LEVELS.find((l) => l.id === 'rust')!;
@@ -53,8 +53,8 @@ describe('Rust Corridor', () => {
 });
 
 /** Before each wave, buy from the shopping list in order; use abilities when rich. */
-function play(seed: number, plan: [PlantId, number, number][]): Game {
-  const g = new Game(seed, RUST);
+function play(seed: number, plan: [PlantId, number, number][], boss?: ZombieId): Game {
+  const g = new Game(seed, RUST, { boss });
   let next = 0;
   while (g.phase === 'build') {
     while (next < plan.length && g.sun >= PLANTS[plan[next][0]].cost) {
@@ -91,9 +91,12 @@ const PLAN: [PlantId, number, number][] = [
 
 describe('Rust Corridor balance', () => {
   it('a sensible defense can win', () => {
-    let wins = 0;
-    for (const seed of [1, 2, 3]) if (play(seed, PLAN).phase === 'won') wins++;
-    expect(wins).toBeGreaterThanOrEqual(2);
+    // Whichever boss turns up.
+    for (const boss of BOSSES) {
+      let wins = 0;
+      for (const seed of [1, 2, 3]) if (play(seed, PLAN, boss).phase === 'won') wins++;
+      expect(wins, boss).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('doing nothing loses', () => {

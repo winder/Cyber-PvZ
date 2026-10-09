@@ -20,6 +20,7 @@ export type DeathKind =
   | 'zapped' // electrocuted: yellow glow, flashing x-ray bones, a pile of ash
   | 'jetpackBlast' // the jetpack blows and launches it at the camera
   | 'shieldSquish' // its own riot shield flattens it
+  | 'goDownWithShip' // the Ship Captain: a last rocket, a salute, and down he goes
   | 'shatter'; // the Orbital Laser Strike blows it apart, some bits at the screen
 
 const COMMON: DeathKind[] = ['dismember', 'shocked', 'zapped'];
@@ -30,8 +31,10 @@ const OWN_DEATH_CHANCE = 0.5;
 const GRAVITY = 16;
 
 export function pickDeath(type: ZombieId, by: 'plant' | 'strike'): DeathKind {
+  const { death: own, boss } = ZOMBIES[type];
+  // A boss always goes its own way.
+  if (own && boss) return own;
   if (by === 'strike') return 'shatter';
-  const own = ZOMBIES[type].death;
   if (own && Math.random() < OWN_DEATH_CHANCE) return own;
   return COMMON[Math.floor(Math.random() * COMMON.length)];
 }
@@ -70,6 +73,7 @@ export function playDeath(kind: DeathKind, visual: Visual, stage: DeathStage, op
     case 'zapped': return zapped(rig, stage);
     case 'jetpackBlast': return rig.pack ? jetpackBlast(rig, stage) : dismember(rig, stage);
     case 'shieldSquish': return rig.shield ? shieldSquish(rig, stage) : shocked(rig, stage);
+    case 'goDownWithShip': return goDownWithShip(rig, stage);
     case 'shatter': return shatter(rig, stage, opts.blast ?? { x: rig.root.position.x, z: rig.root.position.z }, opts.toCamera ?? 0);
   }
 }
@@ -969,5 +973,171 @@ function shatter(rig: Rig, stage: DeathStage, blast: { x: number; z: number }, t
     show.add(fleck(stage, mid, new Vector3(rand(-6, 6), rand(3, 10), rand(-6, 6)), i % 3 ? color : '#ff4466', rand(0.06, 0.14) * s, rand(0.6, 1.1)));
   }
   rig.root.dispose();
+  return show;
+}
+
+// ----------------------------------------------------------------------------
+//  Ship Captain: goes down with his ship
+// ----------------------------------------------------------------------------
+
+const FIREWORK_COLORS = ['#ff5fd2', '#ffe14d', '#4de6ff', '#3cff6e', '#ff3c2c'];
+
+/** A rocket shot straight up, corkscrewing, that bursts into fireworks. */
+function skyRocket(stage: DeathStage, show: Show, from: Vector3, height: number, s: number): DeathEffect {
+  const mesh = MeshBuilder.CreateCylinder('lastRocket', { height: 0.5 * s, diameterTop: 0, diameterBottom: 0.16 * s, tessellation: 8 }, stage.scene);
+  mesh.material = stage.mats.neon('#ff3c2c', 1.2);
+  mesh.position.copyFrom(from);
+  mesh.isPickable = false;
+  const RISE = 1.1;
+  let t = 0, trail = 0, burst = false;
+  return {
+    update: (dt) => {
+      t += dt;
+      if (t < RISE) {
+        const k = t / RISE;
+        const wob = (1 - k) * 0.6 * s;
+        mesh.position.set(from.x + Math.cos(t * 16) * wob * k, from.y + height * (1 - (1 - k) * (1 - k)), from.z + Math.sin(t * 16) * wob * k);
+        trail -= dt;
+        if (trail <= 0) {
+          trail = 0.03;
+          show.add(puff(stage, mesh.position, '#ffb21f', 0.12 * s, 0.25));
+          show.add(smoke(stage, mesh.position, 0.12 * s, 0.7));
+        }
+        return true;
+      }
+      if (!burst) {
+        burst = true;
+        mesh.setEnabled(false);
+        const at = mesh.position.clone();
+        for (const [i, color] of FIREWORK_COLORS.entries()) {
+          show.add(puff(stage, at.add(randomSpin(0.8 * s)), color, 0.3 * s, 0.35 + i * 0.05, 1.4));
+        }
+        for (let i = 0; i < 50; i++) {
+          const dir = randomSpin(1).normalize().scale(rand(5, 9));
+          show.add(fleck(stage, at, dir, FIREWORK_COLORS[i % FIREWORK_COLORS.length], rand(0.12, 0.22) * s / 2, rand(1, 1.8), 3));
+        }
+        stage.shake(0.15);
+      }
+      return false;
+    },
+    dispose: () => mesh.dispose(),
+  };
+}
+
+/** A ripple of glowing water spreading out across the ground. */
+function ripple(stage: DeathStage, x: number, z: number, size: number): DeathEffect {
+  const mesh = MeshBuilder.CreateTorus('ripple', { diameter: size, thickness: size * 0.06, tessellation: 32 }, stage.scene);
+  mesh.material = stage.mats.neon('#4de6ff', 1.2, 0.8);
+  mesh.position.set(x, stage.terrain.terrainHeight(x, z) + 0.06, z);
+  mesh.scaling.y = 0.3;
+  mesh.isPickable = false;
+  let t = 0;
+  return {
+    update: (dt) => {
+      t += dt;
+      const k = t / 1.1;
+      mesh.scaling.x = mesh.scaling.z = 0.4 + k * 1.8;
+      mesh.visibility = Math.max(0, 0.9 * (1 - k));
+      return k < 1;
+    },
+    dispose: () => mesh.dispose(),
+  };
+}
+
+/**
+ * A captain goes down with his ship. He staggers, sparks flying off his
+ * armor; the launcher jerks skyward and fires one last rocket that bursts
+ * into fireworks. Then he stands tall, salutes, and sinks into the ground as
+ * if into the sea, listing like a sinking ship, ripples and bubbles all
+ * round him, until only the launcher is left, firing a last red flare.
+ */
+function goDownWithShip(rig: Rig, stage: DeathStage): DeathEffect {
+  const s = rig.scale;
+  const root = rig.root;
+  const joint = (role: string) => root.getChildTransformNodes(false).find((n) => n.name.endsWith(`-${role}-joint`));
+  const armR = joint('armR'), armL = joint('armL'), head = joint('head');
+  const muzzle = root.getChildTransformNodes(false).find((n) => n.name.endsWith('-muzzle'));
+  const startR = armR?.rotation.clone() ?? Vector3.Zero();
+  const startL = armL?.rotation.clone() ?? Vector3.Zero();
+  const ground = () => stage.terrain.terrainHeight(root.position.x, root.position.z);
+  const depth = 1.75 * s;
+  const STAGGER = 0.8, FIRE = 0.95, SALUTE = 1.5, SINK = 2.1, DOWN = 5.2, FLARE = 4.7, END = 5.6;
+  let fired = false, flared = false, splashed = false;
+  let sparks = 0, bubbles = 0, ripples = 0;
+  const show: Show = new Show((t, dt) => {
+    for (const leg of rig.legs) leg.rotation.x = 0;
+    // Staggering under the last hit, sparks off the armor, launcher swinging up.
+    if (t < SALUTE) {
+      const k = Math.min(1, t / STAGGER);
+      root.rotation.x = -0.18 * Math.sin(k * Math.PI);
+      root.rotation.z = Math.sin(t * 16) * 0.07 * (1 - k);
+      root.position.y = ground();
+      if (t < STAGGER) {
+        sparks -= dt;
+        if (sparks <= 0 && rig.body) {
+          sparks = 0.06;
+          const at = centerOf(rig.body.mesh).add(randomSpin(0.4 * s));
+          show.add(fleck(stage, at, new Vector3(rand(-3, 3), rand(2, 5), rand(-3, 3)), Math.random() < 0.5 ? '#ffe14d' : '#dfe6ff', rand(0.05, 0.09) * s / 2, rand(0.3, 0.6)));
+        }
+      }
+    }
+    // The launcher points at the sky (and stays there).
+    if (armR) {
+      const up = smooth(t / STAGGER);
+      const kick = fired && t < FIRE + 0.3 ? Math.sin(((t - FIRE) / 0.3) * Math.PI) * 0.35 : 0;
+      armR.rotation.set(startR.x + (-Math.PI + 0.12 - startR.x) * up - kick, 0, startR.z + (0.12 - startR.z) * up);
+    }
+    if (!fired && t >= FIRE) {
+      fired = true;
+      const from = muzzle ? muzzle.getAbsolutePosition().clone() : root.position.add(new Vector3(0, 2.5 * s, 0));
+      show.add(puff(stage, from, '#ffb21f', 0.5 * s, 0.3, 2));
+      show.add(skyRocket(stage, show, from, 1.8 * s, s));
+    }
+    // Stand to attention and salute: the fist comes up to the brow.
+    if (armL && t > FIRE) {
+      const k = smooth((t - FIRE - 0.2) / 0.45);
+      armL.rotation.set(startL.x + (-2.75 - startL.x) * k, startL.y + (-0.5 - startL.y) * k, startL.z + (-1.15 - startL.z) * k);
+    }
+    if (head) head.rotation.set(t > SALUTE ? -0.2 * smooth((t - SALUTE) / 0.4) : 0, 0, 0);
+    if (t >= SALUTE && t < SINK) {
+      root.rotation.set(0, root.rotation.y, 0);
+      root.position.y = ground();
+    }
+    // Down with the ship: listing, going under, ripples and bubbles.
+    if (t >= SINK) {
+      const k = Math.min(1, (t - SINK) / (DOWN - SINK));
+      const sink = k * k * (1.4 - 0.4 * k);
+      root.position.y = ground() - depth * sink - Math.sin(t * 5) * 0.03 * s;
+      root.rotation.z = 0.22 * smooth(k * 1.5);
+      root.rotation.x = -0.1 * smooth(k * 1.5);
+      ripples -= dt;
+      if (ripples <= 0 && k < 0.95) {
+        ripples = 0.45;
+        show.add(ripple(stage, root.position.x, root.position.z, 1.6 * s));
+      }
+      bubbles -= dt;
+      if (bubbles <= 0) {
+        bubbles = 0.05;
+        const a = rand(0, Math.PI * 2), r = rand(0.1, 0.5) * s;
+        const at = new Vector3(root.position.x + Math.cos(a) * r, ground() + 0.05, root.position.z + Math.sin(a) * r);
+        show.add(fleck(stage, at, new Vector3(0, rand(1.5, 3), 0), Math.random() < 0.6 ? '#9fe8ff' : '#ffffff', rand(0.05, 0.1) * s / 2, rand(0.4, 0.8), -1));
+      }
+      if (!splashed) {
+        splashed = true;
+        show.add(dustRing(stage, root.position.x, root.position.z, 1.2 * s));
+        stage.shake(0.2);
+      }
+    }
+    // A last flare from the launcher, the only thing still above ground.
+    if (!flared && t >= FLARE) {
+      flared = true;
+      const from = muzzle ? muzzle.getAbsolutePosition().clone() : root.position.clone();
+      show.add(fleck(stage, from, new Vector3(0, 9, 0), '#ff3c2c', 0.18 * s / 2, 1.4, 4));
+      show.add(puff(stage, from, '#ff3c2c', 0.4 * s, 0.4, 2));
+    }
+    if (t >= DOWN) root.setEnabled(false);
+    return t < END;
+  });
+  show.own(root);
   return show;
 }

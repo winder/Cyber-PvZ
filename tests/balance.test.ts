@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { PLANTS, type PlantId } from '../src/data/config';
+import { BOSSES, LEVELS, PLANTS, type PlantId, type ZombieId } from '../src/data/config';
 import { Game, TICK_RATE } from '../src/sim/game';
 
 /** Play a whole game: before each wave, buy from the shopping list in order. */
-function playGame(seed: number, plan: [PlantId, number, number][]): Game {
-  const g = new Game(seed);
+function playGame(seed: number, plan: [PlantId, number, number][], boss?: ZombieId): Game {
+  const g = new Game(seed, LEVELS[0], { boss });
   let next = 0;
   while (g.phase === 'build') {
     while (next < plan.length && g.sun >= PLANTS[plan[next][0]].cost) {
@@ -46,9 +46,12 @@ const PLAN: [PlantId, number, number][] = [
 
 describe('balance', () => {
   it('a sensible defense can win', () => {
-    let wins = 0;
-    for (const seed of [1, 2, 3]) if (playGame(seed, PLAN).phase === 'won') wins++;
-    expect(wins).toBeGreaterThanOrEqual(2);
+    // Whichever boss turns up.
+    for (const boss of BOSSES) {
+      let wins = 0;
+      for (const seed of [1, 2, 3]) if (playGame(seed, PLAN, boss).phase === 'won') wins++;
+      expect(wins, boss).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('doing nothing loses', () => {
