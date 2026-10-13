@@ -26,6 +26,17 @@ is `'build' | 'battle' | 'won' | 'lost'`.
 income, **Power Plant**, Solar Flowers) plus a bonus for clearing a wave.
 *Avoid:* "money", "energy".
 
+**Score** — Points for one game: every zombie beaten (tougher ones are worth
+more, the **Boss** most), every wave cleared (later waves more) and, on a
+win, the health left on each **Base**. Sun doesn't count. A rule, so it's
+kept by the sim. Code: `Game.score`, `SCORE`. *Avoid:* "points" for sun.
+
+**Level record** — What the browser remembers about a level: its **high
+score** (best score from a finished game, won or lost) and its **plays**
+(games where the first wave was started). Shown on the title screen's level
+buttons. Saved on that device only; debug-mode games aren't recorded. Code:
+`src/records.ts`.
+
 **Game speed** — How fast the whole game runs. "1×" is `GAME_SPEED` (2× the
 original pace); the speed button doubles it. Everything speeds up together.
 *Avoid:* "zombie speed" for this (that's a per-zombie stat).

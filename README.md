@@ -17,6 +17,9 @@ Open the address Vite prints. To play on a tablet on the same Wi-Fi, open the
 
 ## Levels
 
+Each level button on the title screen shows your high score and how many
+times you've played it (remembered in that browser only).
+
 Choose a level on the title screen, or link straight to one:
 `?level=1` (Neon Grid) or `?level=2` (Rust Corridor). It combines with debug
 mode, e.g. `?level=2&debug`.

@@ -1,5 +1,5 @@
 import {
-  ABILITIES, BOSSES, ECONOMY, LEVELS, PLANTS, STRUCTURES, ZOMBIES,
+  ABILITIES, BOSSES, ECONOMY, LEVELS, PLANTS, SCORE, STRUCTURES, ZOMBIES,
   type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
 import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
@@ -131,6 +131,8 @@ export class Game {
   readonly map: MapDef;
   readonly waves: SpawnGroup[][];
   sun = ECONOMY.startingSun;
+  /** Points so far: zombies beaten, waves cleared and, on a win, bases kept. */
+  score = 0;
   readonly plants: Plant[] = [];
   readonly zombies: Zombie[] = [];
   readonly structures: Structure[];
@@ -884,6 +886,8 @@ export class Game {
       const zb = this.zombies[i];
       if (zb.hp > 0) continue;
       const by = this.struckDown.delete(zb.id) ? 'strike' : 'plant';
+      const def = ZOMBIES[zb.type];
+      this.score += def.boss ? SCORE.boss : Math.round(def.hp * SCORE.perZombieHp);
       this.events.push({ t: 'zombieDied', id: zb.id, type: zb.type, x: zb.x, z: zb.z, by });
       this.zombies.splice(i, 1);
     }
@@ -920,8 +924,12 @@ export class Game {
     this.cooldowns.orbitalStrike = 0;
     this.cooldowns.hyperSun = 0;
     this.wave++;
+    this.score += SCORE.waveClear * this.wave;
     if (this.wave >= this.totalWaves) {
       this.phase = 'won';
+      for (const s of this.structures) {
+        if (s.alive) this.score += Math.round((SCORE.baseSaved * s.hp) / STRUCTURES[s.type].hp);
+      }
       this.events.push({ t: 'waveCleared', wave: cleared, bonus: 0 });
       this.events.push({ t: 'won' });
     } else {

@@ -25,6 +25,11 @@ function $(id: string): HTMLElement {
   return el;
 }
 
+/** A score as the player reads it: 12,340. */
+export function formatScore(score: number): string {
+  return Math.round(score).toLocaleString('en-US');
+}
+
 /** Everything drawn on top of the 3D view, as plain HTML. */
 export class Hud {
   private cards = new Map<PlantId, HTMLButtonElement>();
@@ -111,6 +116,8 @@ export class Hud {
         $('btn-sell').textContent = `Sell +${PLANTS[p.type].cost}☀`;
       }
     }
+
+    $('score').textContent = `⭐ ${formatScore(g.score)}`;
 
     const online = g.abilitiesOnline();
     for (const [id, { btn, cd }] of this.abilityBtns) {

@@ -10,7 +10,8 @@ import { Renderer } from './render/renderer';
 import { Spectacle } from './render/spectacle';
 import { Weather } from './render/weather';
 import { createWorld } from './render/world';
-import { Hud } from './ui/hud';
+import { countPlay, getRecord, submitScore } from './records';
+import { Hud, formatScore } from './ui/hud';
 import { Minimap } from './ui/minimap';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -66,7 +67,7 @@ const spectacle = new Spectacle(world, camera, game, level, {
   clearBanner: () => hud.hideBanner(),
   finished: () => {
     hud.hideBanner();
-    hud.showOverlay('You Win! 🌱⚡', 'The Mega-Brain Greenhouse is safe.<br>The zombies have been laser-ed.', 'Play again');
+    hud.showOverlay('You Win! 🌱⚡', `The Mega-Brain Greenhouse is safe.<br>The zombies have been laser-ed.<br>${result}`, 'Play again');
   },
 });
 const weather = new Weather(world, level.theme, camera, {
@@ -290,6 +291,26 @@ function handleHover(px: number, py: number): void {
   renderer.setAim(ui.aiming !== null && game.phase === 'battle', pt.x, pt.z);
 }
 
+/** The score line for the win and lose screens, written when the game ends. */
+let result = '';
+let playCounted = false;
+
+/**
+ * The game is over: save the score if it's this level's best, and say so.
+ * Debug games (wave jumps, unlimited sun) don't touch the records.
+ */
+function recordResult(): void {
+  const score = `Score: <b>${formatScore(game.score)}</b>`;
+  if (debug.on) {
+    result = `<span class="result">${score}</span>`;
+    return;
+  }
+  const best = submitScore(level.id, game.score)
+    ? '🏆 New high score!'
+    : `High score: ${formatScore(getRecord(level.id).highScore)}`;
+  result = `<span class="result">${score} · ${best}</span>`;
+}
+
 /** Sounds, messages and screens triggered by things happening in the game. */
 function react(events: SimEvent[]): void {
   for (const e of events) {
@@ -333,6 +354,9 @@ function react(events: SimEvent[]): void {
         break;
       }
       case 'waveStart':
+        // A play counts once the first wave is under way, not for looking at the title screen.
+        if (!playCounted && !debug.on) countPlay(level.id);
+        playCounted = true;
         audio.play('waveStart');
         hud.toast(e.wave === game.totalWaves - 1 ? '⚠️ FINAL WAVE! ⚠️' : `Wave ${e.wave + 1}!`);
         break;
@@ -346,10 +370,12 @@ function react(events: SimEvent[]): void {
         audio.play('click');
         hud.toast(`🐞 Jumped to wave ${e.wave + 1}${e.wave === game.totalWaves - 1 ? ' (final wave!)' : ''}`);
         break;
-      // 'won': the Spectacle plays the finale, then shows the win screen.
+      // The Spectacle plays the finale, then shows the win screen.
+      case 'won': recordResult(); break;
       case 'lost':
+        recordResult();
         audio.play('lose');
-        hud.showOverlay('Brains Eaten! 🧟', `The zombies got the Mega-Brain Greenhouse on wave ${game.wave + 1}.`, 'Try again');
+        hud.showOverlay('Brains Eaten! 🧟', `The zombies got the Mega-Brain Greenhouse on wave ${game.wave + 1}.<br>${result}`, 'Try again');
         break;
       default: break;
     }
@@ -466,8 +492,12 @@ function levelPicker(): string {
     const params = new URLSearchParams(location.search);
     params.set('level', l.id);
     const on = l === level ? ' on' : '';
+    const r = getRecord(l.id);
+    const record = r.plays
+      ? `🏆 ${formatScore(r.highScore)} · played ${r.plays}×`
+      : 'Not played yet';
     return `<a class="level${on}" href="?${params}"><span class="level-icon">${l.icon}</span>` +
-      `<b>${i + 1}. ${l.name}</b><small>${l.description}</small></a>`;
+      `<b>${i + 1}. ${l.name}</b><small>${l.description}</small><small class="record">${record}</small></a>`;
   }).join('');
   return `<div class="levels">${buttons}</div>`;
 }

@@ -379,6 +379,18 @@ export const ECONOMY = {
   waveClearBonus: 200,
 };
 
+/** What earns score. Sun spent or saved doesn't count: only zombies beaten and bases kept. */
+export const SCORE = {
+  /** Points for beating a zombie, per point of its health (tougher zombies are worth more). */
+  perZombieHp: 1,
+  /** Points for beating the boss, whichever one it is. */
+  boss: 5000,
+  /** Points for clearing a wave, times the wave's number (wave 3 is worth 3 of these). */
+  waveClear: 250,
+  /** On a win: points for each base, scaled by the health it has left. */
+  baseSaved: 2000,
+};
+
 // ---------------------------------------------------------------------------
 //  MAPS
 //  Each map is centered on (0, 0). x runs west→east, z runs south→north.
