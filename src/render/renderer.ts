@@ -5,6 +5,7 @@ import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type
 import type { Game, SimEvent } from '../sim/game';
 import { animate, LEAP_SECONDS, UNIT } from './blockModel';
 import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
+import { DiscoBall } from './disco';
 import { RangeRing, RING_GROUP } from './rangeRing';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
@@ -30,6 +31,8 @@ interface Tracked {
   groundY?: number;
   /** Eased speed over the ground (units per second), for leaping gaits. */
   speed?: number;
+  /** A Disco boss's mirror ball, bouncing around inside it. */
+  disco?: DiscoBall;
 }
 
 interface Effect {
@@ -62,6 +65,8 @@ export class Renderer {
   shake: (amount: number) => void = () => {};
   /** A message for the player, with a sound (wired up to the HUD). */
   notify: (text: string, sound?: SoundId) => void = () => {};
+  /** This game's boss is a Disco boss. */
+  discoBoss = false;
   /** Rocketeers just fired (by id): how much kick is left in the arm. */
   private recoil = new Map<number, number>();
   /** Summoners calling up their crew (by id): seconds left with the arm raised. */
@@ -175,6 +180,7 @@ export class Renderer {
         const stone = z.grave >= 0 ? this.world.tombstones?.rise(z.grave) : undefined;
         const visual = createZombieVisual(scene, mats, z.type, `zombie${z.id}`, stone);
         t = { visual, bar: this.makeBar(visual, 0.9), x: z.x, z: z.z };
+        if (def.boss && this.discoBoss && visual.character) t.disco = new DiscoBall(scene, `zombie${z.id}`, visual.character);
         this.zombies.set(z.id, t);
       }
       // Actually going somewhere? (Escorts sometimes stand still at their post.)
@@ -211,6 +217,7 @@ export class Renderer {
           pet.tick(dt, z.hp / def.hp);
           if (pet.gone) this.petFlewOff(t.visual);
         }
+        t.disco?.tick(dt);
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
@@ -594,6 +601,7 @@ export class Renderer {
     this.dying.delete(id);
     this.recoil.delete(id);
     this.beckon.delete(id);
+    t.disco?.dispose();
     // Anything riding on it gets away first.
     if (t.visual.pet) {
       t.visual.pet.flee();

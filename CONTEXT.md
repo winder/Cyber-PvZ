@@ -99,6 +99,12 @@ game picks one at random (`BOSSES`; `?boss=` in the address to choose):
 **ZomWes 8000**, whose body is the **Westbot** model, or the **Ship
 Captain**. Code: `Game.boss`. *Avoid:* "Wesbot", "Webot".
 
+**Disco boss** — Every 3rd game played (counting **plays** on all levels,
+`DISCO_EVERY`), whichever boss turns up has a mirror ball bouncing around
+inside it: a glow that shows through its body, lights up the parts it's
+near, and throws turning beams of colored light. `?disco` in the address
+forces it. Looks only. Code: `src/render/disco.ts`, `Renderer.discoBoss`.
+
 **Ship Captain** — A medium-sized boss in body armor with a rocket launcher
 for a right hand. He **fires rockets** (blast damage to every plant where
 one lands) as he walks, and every so often **summons** a few zombies around

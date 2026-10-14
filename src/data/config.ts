@@ -379,6 +379,9 @@ export const ECONOMY = {
   waveClearBonus: 200,
 };
 
+/** Every this-many games played (on any level), the boss is a Disco boss. */
+export const DISCO_EVERY = 3;
+
 /** What earns score. Sun spent or saved doesn't count: only zombies beaten and bases kept. */
 export const SCORE = {
   /** Points for beating a zombie, per point of its health (tougher zombies are worth more). */

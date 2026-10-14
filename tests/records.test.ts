@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LEVELS, SCORE, ZOMBIES } from '../src/data/config';
-import { countPlay, getRecord, submitScore } from '../src/records';
+import { countPlay, getRecord, submitScore, totalPlays } from '../src/records';
 import { Game, TICK_RATE } from '../src/sim/game';
 
 /** A stand-in for the browser's storage. */
@@ -31,6 +31,14 @@ describe('level records', () => {
     expect(getRecord('neon').plays).toBe(2);
     expect(getRecord('rust').plays).toBe(1);
     expect(getRecord('cemetery').plays).toBe(0);
+  });
+
+  it('adds up plays across levels', () => {
+    expect(totalPlays()).toBe(0);
+    countPlay('neon');
+    countPlay('rust');
+    countPlay('rust');
+    expect(totalPlays()).toBe(3);
   });
 
   it('keeps only the best score, and says when it was beaten', () => {

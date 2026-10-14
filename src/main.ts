@@ -1,7 +1,7 @@
 import { Engine } from '@babylonjs/core';
 import { Audio } from './audio';
 import {
-  ABILITIES, BOSSES, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId, type ZombieId,
+  ABILITIES, BOSSES, DISCO_EVERY, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId, type ZombieId,
 } from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { isRotatable } from './sim/shapes';
@@ -10,7 +10,7 @@ import { Renderer } from './render/renderer';
 import { Spectacle } from './render/spectacle';
 import { Weather } from './render/weather';
 import { createWorld } from './render/world';
-import { countPlay, getRecord, submitScore } from './records';
+import { countPlay, getRecord, submitScore, totalPlays } from './records';
 import { Hud, formatScore } from './ui/hud';
 import { Minimap } from './ui/minimap';
 
@@ -53,6 +53,8 @@ const world = createWorld(engine, level);
 const renderer = new Renderer(world, game);
 const camera = makeCamera();
 renderer.shake = (amount) => camera.shake(amount);
+// ?disco in the address: a Disco boss this game, whatever game number it is.
+renderer.discoBoss = new URLSearchParams(location.search).has('disco');
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, game, (x, z) => camera.lookAt(x, z));
 const hud = makeHud();
 renderer.notify = (text, sound) => {
@@ -325,7 +327,10 @@ function react(events: SimEvent[]): void {
         }
         break;
       // Its entrance (name card and all) is staged by the Spectacle.
-      case 'bossSpawn': audio.play('bossRoar'); break;
+      case 'bossSpawn':
+        audio.play('bossRoar');
+        if (renderer.discoBoss) hud.toast(`🪩 ${ZOMBIES[e.type].name} has DISCO FEVER! 🪩`, 4000);
+        break;
       case 'stomp': audio.play('stomp'); break;
       case 'rocketFired': audio.play('rocket'); break;
       case 'rocketHit': audio.play('rocketBoom'); break;
@@ -355,7 +360,10 @@ function react(events: SimEvent[]): void {
       }
       case 'waveStart':
         // A play counts once the first wave is under way, not for looking at the title screen.
-        if (!playCounted && !debug.on) countPlay(level.id);
+        if (!playCounted && !debug.on) {
+          countPlay(level.id);
+          if (totalPlays() % DISCO_EVERY === 0) renderer.discoBoss = true;
+        }
         playCounted = true;
         audio.play('waveStart');
         hud.toast(e.wave === game.totalWaves - 1 ? '⚠️ FINAL WAVE! ⚠️' : `Wave ${e.wave + 1}!`);

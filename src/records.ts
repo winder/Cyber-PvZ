@@ -42,6 +42,11 @@ export function getRecord(levelId: string): LevelRecord {
   return load()[levelId] ?? { plays: 0, highScore: 0 };
 }
 
+/** Games started on every level put together. */
+export function totalPlays(): number {
+  return Object.values(load()).reduce((sum, r) => sum + r.plays, 0);
+}
+
 /** One more game started on this level. */
 export function countPlay(levelId: string): void {
   const records = load();
