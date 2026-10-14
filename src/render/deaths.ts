@@ -21,6 +21,7 @@ export type DeathKind =
   | 'jetpackBlast' // the jetpack blows and launches it at the camera
   | 'shieldSquish' // its own riot shield flattens it
   | 'goDownWithShip' // the Ship Captain: a last rocket, a salute, and down he goes
+  | 'overwatered' // the Necro-Gardener: waters himself, and a giant Solar Flower grows out of him
   | 'shatter'; // the Orbital Laser Strike blows it apart, some bits at the screen
 
 const COMMON: DeathKind[] = ['dismember', 'shocked', 'zapped'];
@@ -74,6 +75,7 @@ export function playDeath(kind: DeathKind, visual: Visual, stage: DeathStage, op
     case 'jetpackBlast': return rig.pack ? jetpackBlast(rig, stage) : dismember(rig, stage);
     case 'shieldSquish': return rig.shield ? shieldSquish(rig, stage) : shocked(rig, stage);
     case 'goDownWithShip': return goDownWithShip(rig, stage);
+    case 'overwatered': return overwatered(rig, stage);
     case 'shatter': return shatter(rig, stage, opts.blast ?? { x: rig.root.position.x, z: rig.root.position.z }, opts.toCamera ?? 0);
   }
 }
@@ -1139,5 +1141,175 @@ function goDownWithShip(rig: Rig, stage: DeathStage): DeathEffect {
     return t < END;
   });
   show.own(root);
+  return show;
+}
+
+/**
+ * The Necro-Gardener overwaters himself. The can swings up over his own head
+ * and empties; he swells and trembles; the glass helmet bursts and a vine
+ * shoots up out of him, putting out leaves as it climbs. It blooms into a
+ * giant Solar Flower that showers sun over the garden while what's left of
+ * him sinks into the ground at its roots. Then the flower scatters into light.
+ */
+function overwatered(rig: Rig, stage: DeathStage): DeathEffect {
+  const s = rig.scale;
+  const root = rig.root;
+  const { scene, mats } = stage;
+  const joint = (role: string) => root.getChildTransformNodes(false).find((n) => n.name.endsWith(`-${role}-joint`));
+  const armR = joint('armR'), armL = joint('armL'), head = joint('head');
+  const muzzle = root.getChildTransformNodes(false).find((n) => n.name.endsWith('-muzzle'));
+  const helmet = root.getChildTransformNodes(false).find((n) => n.name.endsWith('-helmet'));
+  const startR = armR?.rotation.clone() ?? Vector3.Zero();
+  const startL = armL?.rotation.clone() ?? Vector3.Zero();
+  const ground = () => stage.terrain.terrainHeight(root.position.x, root.position.z);
+  const POUR = 0.5, BURST = 1.6, GROWN = 2.7, BLOOM = 2.9, SINK = 3.1, DOWN = 5.4, SCATTER = 7, END = 7.8;
+  const SEGMENTS = 12;
+  /** How tall the vine stands above the ground, and how tall he is. */
+  const height = 2.9 * s, tall = 1.6 * s;
+
+  // The vine: a stack of stem segments from the top of his head up, with a
+  // leaf on every other one, and the flower on the end.
+  const vine = new TransformNode('deathVine', scene);
+  const stemMat = mats.neon('#2fbf4a', 0.4), leafMat = mats.neon('#4fd65a', 0.5);
+  const segments: { stem: Mesh; leaf?: Mesh }[] = [];
+  for (let i = 0; i < SEGMENTS; i++) {
+    const stem = MeshBuilder.CreateCylinder(`deathVine${i}`, { height: 1, diameter: 0.14 * s * (1.2 - 0.5 * (i / SEGMENTS)), tessellation: 6 }, scene);
+    stem.material = stemMat;
+    stem.parent = vine;
+    stem.isPickable = false;
+    stem.setEnabled(false);
+    let leaf: Mesh | undefined;
+    if (i % 2 === 1) {
+      leaf = MeshBuilder.CreateBox(`deathLeaf${i}`, { width: 0.42 * s, height: 0.03 * s, depth: 0.18 * s }, scene);
+      leaf.material = leafMat;
+      leaf.parent = vine;
+      leaf.isPickable = false;
+      leaf.setEnabled(false);
+    }
+    segments.push({ stem, leaf });
+  }
+  const flower = new TransformNode('deathFlower', scene);
+  flower.parent = vine;
+  const disc = MeshBuilder.CreateCylinder('deathFlowerFace', { height: 0.14 * s, diameter: 0.7 * s, tessellation: 16 }, scene);
+  disc.material = mats.neon('#ff9a1f', 0.8);
+  disc.parent = flower;
+  const petals = MeshBuilder.CreateTorus('deathFlowerPetals', { diameter: 1.05 * s, thickness: 0.26 * s, tessellation: 14 }, scene);
+  petals.material = mats.neon('#ffd23f', 1);
+  petals.parent = flower;
+  for (const m of [disc, petals]) m.isPickable = false;
+  flower.setEnabled(false);
+
+  let burst = false, bloomed = false, scattered = false;
+  let drips = 0, motes = 0;
+  const headTop = () => {
+    const y = rig.head ? centerOf(rig.head.mesh).y + 0.25 * s : root.position.y + tall;
+    return Math.max(ground(), y);
+  };
+  const show: Show = new Show((t, dt) => {
+    for (const leg of rig.legs) leg.rotation.x = 0;
+    // The can goes up over his own head and pours.
+    if (armR) {
+      const up = smooth(t / POUR);
+      armR.rotation.set(startR.x + (-2.75 - startR.x) * up, 0, startR.z + (-0.45 - startR.z) * up);
+    }
+    if (t < BURST) {
+      if (head) head.rotation.x = -0.35 * smooth(t / POUR); // looking up into it
+      // Swelling, and shaking harder and harder.
+      const k = smooth((t - POUR) / (BURST - POUR));
+      root.scaling.set(s * (1 + 0.16 * k), s * (1 + 0.05 * k), s * (1 + 0.16 * k));
+      root.rotation.z = Math.sin(t * 38) * 0.05 * k;
+      root.position.y = ground();
+      drips -= dt;
+      if (t > POUR * 0.7 && drips <= 0) {
+        drips = 0.035;
+        const from = muzzle ? muzzle.getAbsolutePosition().clone() : new Vector3(root.position.x, headTop() + 0.5 * s, root.position.z);
+        show.add(fleck(stage, from, new Vector3(rand(-0.6, 0.6), rand(-1, 0.5), rand(-0.6, 0.6)), Math.random() < 0.7 ? '#b14dff' : '#e0a8ff', rand(0.07, 0.12) * s / 2, rand(0.35, 0.6)));
+      }
+    }
+    // The helmet bursts, and up comes the vine.
+    if (!burst && t >= BURST) {
+      burst = true;
+      helmet?.setEnabled(false);
+      root.scaling.setAll(s);
+      root.rotation.z = 0;
+      const at = new Vector3(root.position.x, headTop(), root.position.z);
+      for (let i = 0; i < 18; i++) {
+        const a = rand(0, Math.PI * 2), out = rand(2, 5) * s / 2;
+        show.add(fleck(stage, at.add(new Vector3(0, rand(-0.2, 0.3) * s, 0)), new Vector3(Math.cos(a) * out, rand(3, 7), Math.sin(a) * out), i % 3 ? '#bff5e6' : '#ffffff', rand(0.08, 0.14) * s / 2, rand(0.6, 1)));
+      }
+      show.add(puff(stage, at, '#b14dff', 0.9 * s, 0.4, 2));
+      stage.shake(0.5);
+    }
+    if (t >= BURST) {
+      // Arms flung wide, head thrown back.
+      const k = smooth((t - BURST) / 0.25);
+      if (armR) armR.rotation.set(-2.75 + 1.2 * k, 0, -0.45 + 1.6 * k);
+      if (armL) armL.rotation.set(startL.x + (-1.55 - startL.x) * k, 0, startL.z + (-1.15 - startL.z) * k);
+      if (head) head.rotation.x = -0.35 - 0.3 * k;
+      // What's left of him is drawn down into the roots.
+      const down = smooth((t - SINK) / (DOWN - SINK));
+      root.position.y = ground() - tall * 1.15 * down;
+      root.scaling.set(s * (1 - 0.25 * down), s, s * (1 - 0.25 * down));
+      if (t >= DOWN) root.setEnabled(false);
+
+      // The vine runs from his head (or the ground, once he's under) to its tip.
+      const grown = Math.min(1, (t - BURST) / (GROWN - BURST));
+      const reach = 1 - Math.pow(1 - grown, 2);
+      const fade = scattered ? Math.max(0, 1 - (t - SCATTER) / (END - SCATTER)) : 1;
+      const base = t >= DOWN ? ground() : headTop();
+      const tip = base + (ground() + height - base) * reach;
+      const sway = (k: number) => Math.sin(t * 2.2 + k * 3) * 0.12 * s * k;
+      vine.position.set(root.position.x, 0, root.position.z);
+      const point = (k: number) => new Vector3(sway(k), base + (tip - base) * k, Math.cos(t * 1.7 + k * 4) * 0.08 * s * k);
+      for (const [i, seg] of segments.entries()) {
+        const a = point(i / SEGMENTS), b = point((i + 1) / SEGMENTS);
+        const len = Vector3.Distance(a, b);
+        seg.stem.setEnabled(len > 0.01 && fade > 0);
+        seg.stem.position.copyFrom(a.add(b).scale(0.5));
+        seg.stem.scaling.set(fade, len * 1.05, fade);
+        seg.stem.rotation.z = -Math.atan2(b.x - a.x, b.y - a.y);
+        seg.stem.rotation.x = Math.atan2(b.z - a.z, b.y - a.y);
+        if (seg.leaf) {
+          // Each leaf unfurls as the tip passes it.
+          const open = smooth((reach * SEGMENTS - i) / 1.5) * fade;
+          const side = i % 4 === 1 ? 1 : -1;
+          seg.leaf.setEnabled(open > 0.01);
+          seg.leaf.position.copyFrom(a).addInPlace(new Vector3(side * 0.2 * s * open, 0, 0));
+          seg.leaf.scaling.setAll(Math.max(0.01, open));
+          seg.leaf.rotation.set(0, i * 1.3, side * (0.5 + Math.sin(t * 3 + i) * 0.1));
+        }
+      }
+      // The flower opens with a bounce, then turns its face slowly round.
+      if (t >= GROWN) {
+        const open = (t - GROWN) / (BLOOM - GROWN + 0.25);
+        const bounce = open < 1 ? smooth(open) * (1 + 0.35 * Math.sin(open * Math.PI)) : 1;
+        flower.setEnabled(fade > 0.02);
+        flower.position.copyFrom(point(1));
+        flower.scaling.setAll(Math.max(0.01, bounce * 1.5 * fade));
+        flower.rotation.set(0.45 + Math.sin(t * 1.4) * 0.08, t * 0.8, 0);
+      }
+      if (!bloomed && t >= BLOOM) {
+        bloomed = true;
+        show.add(puff(stage, flower.getAbsolutePosition().clone(), '#ffd23f', 1.6 * s, 0.6, 2));
+        stage.shake(0.2);
+      }
+      // Sun raining down all round.
+      motes -= dt;
+      if (bloomed && !scattered && motes <= 0) {
+        motes = 0.03;
+        const a = rand(0, Math.PI * 2), out = rand(1, 4.5) * s / 2;
+        show.add(fleck(stage, flower.getAbsolutePosition().clone(), new Vector3(Math.cos(a) * out, rand(1, 4), Math.sin(a) * out), Math.random() < 0.75 ? '#ffd23f' : '#fff6c2', rand(0.1, 0.18) * s / 2, rand(1, 1.7), 5));
+      }
+      if (!scattered && t >= SCATTER) {
+        scattered = true;
+        const at = flower.getAbsolutePosition().clone();
+        show.add(puff(stage, at, '#fff6c2', 1.2 * s, 0.5, 2));
+        for (let i = 0; i < 24; i++) show.add(fleck(stage, at.clone(), randomSpin(1).scale(rand(2, 5)), i % 2 ? '#ffd23f' : '#ff9a1f', rand(0.1, 0.16) * s / 2, rand(0.5, 0.9), 3));
+      }
+    }
+    return t < END;
+  });
+  show.own(root);
+  show.own(vine);
   return show;
 }

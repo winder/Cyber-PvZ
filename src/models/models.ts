@@ -17,7 +17,7 @@ export type PartRole =
   | 'head' | 'body' | 'armR' | 'armL' | 'legR' | 'legL' | 'jetpack'
   | 'footR' | 'footL' | 'driverBody' | 'driverHead'
   | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL';
-export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain';
+export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -90,6 +90,17 @@ export const MODELS: Record<ModelId, ModelDef> = {
     parts: HUMANOID_PARTS.map((p) =>
       p.role === 'armR' ? { ...p, rest: [-0.5, 0, 0.15] as [number, number, number] }
       : p.role === 'armL' ? { ...p, rest: [-1.1, 0, 0.6] as [number, number, number] }
+      : p),
+  },
+  // The Necro-Gardener: a lanky humanoid. His right arm (a watering can at the
+  // end) is held out to pour; the left hangs loose. Same skin layout as the
+  // humanoid.
+  gardener: {
+    label: 'Necro-Gardener',
+    walkSwing: 0.5,
+    parts: HUMANOID_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-1.15, 0, 0.1] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-0.25, 0, -0.2] as [number, number, number] }
       : p),
   },
   // The Ship Captain: broad and armored, with huge arms that bulge at the

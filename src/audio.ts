@@ -128,6 +128,8 @@ const SYNTHS: Record<SoundId, Synth> = {
     [0, tone('square', 196, 196, 0.18, 0.08)], [0.18, tone('square', 262, 262, 0.18, 0.08)],
     [0.36, tone('square', 330, 392, 0.4, 0.08)], [0.2, noise(0.6, 0.25, 400)],
   ),
+  goo: seq([0, noise(0.45, 0.22, 500)], [0, tone('sine', 520, 140, 0.4, 0.1)], [0.42, tone('sine', 180, 90, 0.18, 0.12)]),
+  cure: seq([0, tone('triangle', 660, 660, 0.1, 0.08)], [0.1, tone('triangle', 880, 880, 0.1, 0.08)], [0.2, tone('triangle', 1320, 1320, 0.25, 0.08)]),
   squawk: seq([0, tone('sawtooth', 1400, 900, 0.12, 0.08)], [0.14, tone('sawtooth', 1500, 800, 0.18, 0.08)]),
   click: tone('square', 900, 900, 0.03, 0.04),
   error: tone('square', 160, 120, 0.15, 0.08),

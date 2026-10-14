@@ -1,6 +1,6 @@
 import {
   ABILITIES, BOSSES, ECONOMY, LEVELS, PLANTS, SCORE, STRUCTURES, ZOMBIES,
-  type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
+  type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
 import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
 import { boundingRadius, distanceToPlant, footprintPoints, isRotatable, thicknessAcross } from './shapes';
@@ -26,6 +26,12 @@ export interface Plant {
   facing: number;
   /** Walls: which way the wall runs (radians, 0 = east–west). */
   angle: number;
+  /**
+   * Seconds of goo left. While it's above 0 the plant is zombified: it shoots
+   * the bases and healthy plants instead of zombies, makes no sun, and (a
+   * wall) lets zombies walk through. 0 = healthy.
+   */
+  zombified: number;
 }
 
 export interface Zombie {
@@ -53,7 +59,7 @@ export interface Zombie {
   grave: number;
   /** Seconds left climbing out of the grave (it stands still until then). */
   rising: number;
-  /** Rocketeers: seconds until it can fire again. */
+  /** Rocketeers and goo sprayers: seconds until it can fire again. */
   reload: number;
   /** Summoners: seconds until it calls up more zombies. */
   summonIn: number;
@@ -77,7 +83,8 @@ export interface Strike { x: number; z: number; timer: number }
 export interface Rocket { x: number; z: number; timer: number; damage: number; radius: number }
 
 export type SimEvent =
-  | { t: 'shot'; plantId: number; kind: PlantId; fromX: number; fromZ: number; toX: number; toZ: number; toAir: boolean }
+  /** `turned`: fired by a zombified plant, at a base or a healthy plant. */
+  | { t: 'shot'; plantId: number; kind: PlantId; fromX: number; fromZ: number; toX: number; toZ: number; toAir: boolean; turned?: boolean }
   /** `by`: what finished it off (a plant's shot, or the Orbital Laser Strike). */
   | { t: 'zombieDied'; id: number; type: ZombieId; x: number; z: number; by: 'plant' | 'strike' }
   | { t: 'plantPlaced'; id: number }
@@ -97,6 +104,10 @@ export type SimEvent =
   | { t: 'rocketHit'; x: number; z: number; radius: number }
   /** `id`: who called them up; `ids`: the zombies that appeared. */
   | { t: 'summoned'; id: number; ids: number[] }
+  /** `id`: who sprayed. `ids`: the plants it zombified, round (x, z). */
+  | { t: 'gooSprayed'; id: number; x: number; z: number; radius: number; ids: number[] }
+  /** Plants back to normal: burned clean by a strike, worn off, or their boss fell. */
+  | { t: 'plantsCured'; ids: number[]; by: 'strike' | 'time' | 'bossDown' }
   | { t: 'hyperSun' }
   | { t: 'waveStart'; wave: number }
   | { t: 'waveCleared'; wave: number; bonus: number }
@@ -215,7 +226,7 @@ export class Game {
     const def = PLANTS[type];
     this.sun -= def.cost;
     const plant: Plant = {
-      id: this.nextId++, type, x, z, hp: def.hp, cooldown: 0, facing: 0, angle: isRotatable(type) ? angle : 0,
+      id: this.nextId++, type, x, z, hp: def.hp, cooldown: 0, facing: 0, angle: isRotatable(type) ? angle : 0, zombified: 0,
     };
     this.plants.push(plant);
     this.markPlant(plant);
@@ -254,6 +265,8 @@ export class Game {
 
   /** Mark the cells a plant blocks (a little wider than its body, so neighbors seal gaps). */
   private markPlant(p: Plant): void {
+    // Zombies walk straight through a zombified plant.
+    if (p.zombified > 0) return;
     const cost = this.plantPathCost(p.type);
     this.nav.forCellsInCircle(p.x, p.z, boundingRadius(p.type) + PLANT_BLOCK_PAD, (cell) => {
       if (this.nav.blocked[cell]) return;
@@ -336,7 +349,7 @@ export class Game {
     const mult = this.hyperTimer > 0 ? ABILITIES.hyperSun.multiplier : 1;
     let total = ECONOMY.baseSunPerSecond;
     for (const s of this.structures) if (s.alive) total += STRUCTURES[s.type].sunPerSecond ?? 0;
-    for (const p of this.plants) total += (PLANTS[p.type].sunPerSecond ?? 0) * mult;
+    for (const p of this.plants) if (p.zombified <= 0) total += (PLANTS[p.type].sunPerSecond ?? 0) * mult;
     return total;
   }
 
@@ -417,7 +430,7 @@ export class Game {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
       leader: null, slot: 0, detour: 0, grave: -1, rising: 0,
-      reload: 0, summonIn: ZOMBIES[type].summon?.first ?? 0,
+      reload: ZOMBIES[type].goo?.first ?? 0, summonIn: ZOMBIES[type].summon?.first ?? 0,
     };
     this.zombies.push(zombie);
     return zombie;
@@ -471,9 +484,21 @@ export class Game {
 
   private updatePlants(): void {
     const hyper = this.hyperTimer > 0 ? ABILITIES.hyperSun.multiplier : 1;
+    const worn: Plant[] = [];
+    for (const p of this.plants) {
+      if (p.zombified > 0) {
+        p.zombified -= DT;
+        if (p.zombified <= 0) worn.push(p);
+      }
+    }
+    this.cure(worn, 'time');
     for (const p of this.plants) {
       const atk = PLANTS[p.type].attack;
       if (!atk) continue;
+      if (p.zombified > 0) {
+        this.turnedAttack(p, atk);
+        continue;
+      }
       p.cooldown -= DT * hyper;
       const target = this.nearestZombie(p.x, p.z, atk.range, atk.canHitGround, atk.canHitAir);
       if (target) p.facing = Math.atan2(target.z - p.z, target.x - p.x);
@@ -489,6 +514,82 @@ export class Game {
         toX: target.x, toZ: target.z, toAir: ZOMBIES[target.type].flying,
       });
     }
+  }
+
+  /** A zombified plant shoots whatever of the player's is nearest: a base or a healthy plant. */
+  private turnedAttack(p: Plant, atk: NonNullable<PlantDef['attack']>): void {
+    p.cooldown -= DT;
+    let base: Structure | undefined, plant: Plant | undefined;
+    let best = atk.range;
+    for (const s of this.structures) {
+      if (!s.alive) continue;
+      const d = Math.hypot(s.x - p.x, s.z - p.z) - STRUCTURES[s.type].radius;
+      if (d <= best) {
+        best = d;
+        base = s;
+      }
+    }
+    for (const o of this.plants) {
+      if (o.zombified > 0 || o.hp <= 0) continue;
+      const d = distanceToPlant(o, p.x, p.z);
+      if (d <= best) {
+        best = d;
+        plant = o;
+        base = undefined;
+      }
+    }
+    const target = plant ?? base;
+    if (!target) return;
+    p.facing = Math.atan2(target.z - p.z, target.x - p.x);
+    if (p.cooldown > 0) return;
+    p.cooldown = 1 / atk.rate;
+    if (plant) plant.hp -= atk.damage;
+    else this.damageStructure(base!, atk.damage);
+    this.events.push({
+      t: 'shot', plantId: p.id, kind: p.type, fromX: p.x, fromZ: p.z, toX: target.x, toZ: target.z, toAir: false, turned: true,
+    });
+  }
+
+  /** Goo sprayers zombify the nearest healthy plant in range and those round it, walking as they go. */
+  private sprayGoo(zb: Zombie): void {
+    const goo = ZOMBIES[zb.type].goo!;
+    zb.reload -= DT;
+    if (zb.reload > 0) return;
+    let target: Plant | undefined;
+    let best = goo.range;
+    for (const p of this.plants) {
+      if (p.hp <= 0 || p.zombified > 0) continue;
+      const d = distanceToPlant(p, zb.x, zb.z);
+      if (d <= best) {
+        best = d;
+        target = p;
+      }
+    }
+    if (!target) return;
+    zb.reload = goo.every;
+    const { x, z } = target;
+    const ids: number[] = [];
+    for (const p of this.plants) {
+      if (p.hp <= 0 || p.zombified > 0 || distanceToPlant(p, x, z) > goo.radius) continue;
+      p.zombified = goo.duration;
+      p.cooldown = Math.max(p.cooldown, 0.6); // a moment to swivel round
+      this.nav.clearPlant(p.id);
+      ids.push(p.id);
+    }
+    this.remarkNear({ x, z });
+    this.fieldDirty = true;
+    this.events.push({ t: 'gooSprayed', id: zb.id, x, z, radius: goo.radius, ids });
+  }
+
+  /** Back to normal: these plants fight for the player again (and block the way again). */
+  private cure(plants: Plant[], by: 'strike' | 'time' | 'bossDown'): void {
+    if (plants.length === 0) return;
+    for (const p of plants) {
+      p.zombified = 0;
+      this.markPlant(p);
+    }
+    this.fieldDirty = true;
+    this.events.push({ t: 'plantsCured', ids: plants.map((p) => p.id), by });
   }
 
   private nearestZombie(x: number, z: number, range: number, ground: boolean, air: boolean): Zombie | undefined {
@@ -526,6 +627,7 @@ export class Game {
       }
       if (def.rockets) this.fireRocket(zb);
       if (def.summon) this.summonCrew(zb);
+      if (def.goo) this.sprayGoo(zb);
 
       if (def.giant) {
         this.updateGiant(zb, speed);
@@ -584,7 +686,7 @@ export class Game {
     let target: { x: number; z: number } | undefined;
     let best = r.range;
     for (const p of this.plants) {
-      if (p.hp <= 0) continue;
+      if (p.hp <= 0 || p.zombified > 0) continue;
       const d = distanceToPlant(p, zb.x, zb.z);
       if (d <= best) {
         best = d;
@@ -681,7 +783,7 @@ export class Game {
       return;
     }
 
-    const plant = this.plants.find((p) => p.hp > 0 && distanceToPlant(p, zb.x, zb.z) <= def.radius + 0.6);
+    const plant = this.plants.find((p) => p.hp > 0 && p.zombified <= 0 && distanceToPlant(p, zb.x, zb.z) <= def.radius + 0.6);
     if (plant) {
       this.attackPlant(zb, plant);
       return;
@@ -739,7 +841,7 @@ export class Game {
     // Plants in front block the way: stomp everything nearby until they're gone.
     const blocker = this.plants.find((p) => {
       const px = p.x - zb.x, pz = p.z - zb.z;
-      return p.hp > 0 && distanceToPlant(p, zb.x, zb.z) < def.radius + 0.3 && px * dx + pz * dz > 0;
+      return p.hp > 0 && p.zombified <= 0 && distanceToPlant(p, zb.x, zb.z) < def.radius + 0.3 && px * dx + pz * dz > 0;
     });
     if (blocker) {
       zb.attacking = { kind: 'plant', id: blocker.id };
@@ -876,6 +978,8 @@ export class Game {
         this.damageZombie(zb, damage);
         if (zb.hp <= 0) this.struckDown.add(zb.id);
       }
+      // The laser burns the goo off any plant it touches (and doesn't hurt the plant).
+      this.cure(this.plants.filter((p) => p.zombified > 0 && distanceToPlant(p, s.x, s.z) <= radius), 'strike');
       this.events.push({ t: 'strikeHit', x: s.x, z: s.z, radius });
       this.strikes.splice(i, 1);
     }
@@ -888,6 +992,10 @@ export class Game {
       const by = this.struckDown.delete(zb.id) ? 'strike' : 'plant';
       const def = ZOMBIES[zb.type];
       this.score += def.boss ? SCORE.boss : Math.round(def.hp * SCORE.perZombieHp);
+      // The goo dies with whoever sprayed it.
+      if (def.goo && !this.zombies.some((o) => o !== zb && o.hp > 0 && ZOMBIES[o.type].goo)) {
+        this.cure(this.plants.filter((p) => p.zombified > 0), 'bossDown');
+      }
       this.events.push({ t: 'zombieDied', id: zb.id, type: zb.type, x: zb.x, z: zb.z, by });
       this.zombies.splice(i, 1);
     }
@@ -917,6 +1025,7 @@ export class Game {
     if (this.spawnQueue.length > 0 || this.zombies.length > 0) return;
 
     const cleared = this.wave;
+    this.cure(this.plants.filter((p) => p.zombified > 0), 'time');
     for (const p of this.plants) p.hp = PLANTS[p.type].hp;
     this.strikes.length = 0;
     this.rockets.length = 0;
@@ -972,6 +1081,7 @@ export class Game {
     this.hyperTimer = 0;
     this.cooldowns.orbitalStrike = 0;
     this.cooldowns.hyperSun = 0;
+    this.cure(this.plants.filter((p) => p.zombified > 0), 'time');
     for (const p of this.plants) p.hp = PLANTS[p.type].hp;
     for (const s of this.structures) {
       s.hp = STRUCTURES[s.type].hp;

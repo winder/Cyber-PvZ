@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOSSES, LEVELS, STRUCTURES, ZOMBIES, type ZombieId } from '../src/data/config';
+import { BOSSES, LEVELS, STRUCTURES, ZOMBIES, type PlantId, type ZombieId } from '../src/data/config';
 import { MODELS } from '../src/models/models';
 import { UNIT } from '../src/render/blockModel';
 import { Game, TICK_RATE, type SimEvent } from '../src/sim/game';
@@ -201,5 +201,133 @@ describe('Ship Captain', () => {
     };
     expect(height('captain')).toBeGreaterThan(height('guardian') * 1.2);
     expect(height('captain')).toBeLessThan(height('zomwes') / 2);
+  });
+});
+
+describe('Necro-Gardener', () => {
+  const goo = ZOMBIES.gardener.goo!;
+
+  /** A gardener held still at (10, 0), with whatever's planted round (4, 0) in his reach. */
+  function garden(plants: [PlantId, number, number][]) {
+    const g = new Game(1, LEVELS[0], { boss: 'gardener' });
+    g.sun = 1e6;
+    const placed = plants.map(([type, x, z]) => {
+      const r = g.place(type, x, z);
+      if (!r.ok) throw new Error(r.reason);
+      return r.plant;
+    });
+    g.phase = 'battle';
+    const boss = g.spawn('gardener', 'east');
+    const events: SimEvent[] = [];
+    const run = (seconds: number) => {
+      for (let i = 0; i < TICK_RATE * seconds && g.phase === 'battle'; i++) {
+        boss.x = 10; boss.z = 0; boss.hp = ZOMBIES.gardener.hp;
+        g.step();
+        events.push(...g.drainEvents());
+      }
+    };
+    return { g, boss, placed, events, run };
+  }
+
+  it('zombifies the plants where his goo lands, and no others', () => {
+    const { placed, events, run } = garden([['laserPea', 4, 0], ['laserPea', 4, 1.5], ['laserPea', 4, -8]]);
+    run(goo.first + 0.5);
+    const sprayed = events.filter((e) => e.t === 'gooSprayed');
+    expect(sprayed.length).toBe(1);
+    expect(placed[0].zombified).toBeGreaterThan(0);
+    expect(placed[1].zombified).toBeGreaterThan(0);
+    expect(placed[2].zombified).toBe(0);
+  });
+
+  it('turns zombified shooters on healthy plants, and they stop shooting him', () => {
+    const { g, boss, placed, events, run } = garden([['laserPea', 4, 0], ['solarFlower', 1, 0]]);
+    run(goo.first + 0.2);
+    expect(placed[0].zombified).toBeGreaterThan(0);
+    const before = events.length;
+    const flowerHp = placed[1].hp;
+    run(2);
+    const shots = events.slice(before).filter((e) => e.t === 'shot');
+    expect(shots.length).toBeGreaterThan(0);
+    expect(shots.every((e) => e.t === 'shot' && e.turned)).toBe(true);
+    expect(placed[1].hp).toBeLessThan(flowerHp);
+    expect(boss.hp).toBe(ZOMBIES.gardener.hp);
+    expect(g.plants.includes(placed[0])).toBe(true);
+  });
+
+  it('turns them on a base when one is in range', () => {
+    const g = new Game(1, LEVELS[0], { boss: 'gardener' });
+    g.sun = 1e6;
+    const greenhouse = g.structures.find((s) => STRUCTURES[s.type].vital)!;
+    const r = g.place('laserPea', greenhouse.x + STRUCTURES[greenhouse.type].radius + 1.5, greenhouse.z);
+    if (!r.ok) throw new Error(r.reason);
+    g.phase = 'battle';
+    r.plant.zombified = 5;
+    const hp = greenhouse.hp;
+    for (let i = 0; i < TICK_RATE * 2; i++) g.step();
+    expect(greenhouse.hp).toBeLessThan(hp);
+  });
+
+  it('a zombified wall lets zombies walk through, and makes no trouble once cured', () => {
+    const g = new Game(1, LEVELS[0], { boss: 'gardener' });
+    g.sun = 1e6;
+    const r = g.place('forceNut', 4, 0);
+    if (!r.ok) throw new Error(r.reason);
+    const cell = g.nav.cellOf(4, 0);
+    expect(g.nav.plantAt[cell]).toBe(r.plant.id);
+    g.phase = 'battle';
+    const boss = g.spawn('gardener', 'east');
+    for (let i = 0; i < TICK_RATE * (goo.first + 0.2); i++) {
+      boss.x = 10; boss.z = 0;
+      g.step();
+    }
+    expect(r.plant.zombified).toBeGreaterThan(0);
+    expect(g.nav.plantAt[cell]).toBe(-1);
+    // The goo wears off (he's out of reach now), and the wall blocks the way again.
+    for (let i = 0; i < TICK_RATE * (goo.duration + 1); i++) {
+      boss.x = 30; boss.z = 0;
+      g.step();
+    }
+    expect(r.plant.zombified).toBe(0);
+    expect(g.nav.plantAt[cell]).toBe(r.plant.id);
+  });
+
+  it('zombified Solar Flowers make no sun', () => {
+    const { g, placed } = garden([['solarFlower', 4, 0]]);
+    const healthy = g.sunPerSecond();
+    placed[0].zombified = 5;
+    expect(g.sunPerSecond()).toBeLessThan(healthy);
+  });
+
+  it('an Orbital Laser Strike cures the plants it hits, without hurting them', () => {
+    const { g, placed, events, run } = garden([['laserPea', 4, 0], ['laserPea', 4, 1.5]]);
+    run(goo.first + 0.2);
+    expect(placed.every((p) => p.zombified > 0)).toBe(true);
+    const hp = placed.map((p) => p.hp);
+    expect(g.useAbility('orbitalStrike', 4, 0.7).ok).toBe(true);
+    run(1.5);
+    expect(placed.every((p) => p.zombified === 0)).toBe(true);
+    expect(placed.map((p) => p.hp)).toEqual(hp);
+    expect(events.some((e) => e.t === 'plantsCured' && e.by === 'strike')).toBe(true);
+  });
+
+  it('the goo wears off by itself, and dies with him', () => {
+    const { g, boss, placed, events, run } = garden([['laserPea', 4, 0]]);
+    run(goo.first + 0.2);
+    expect(placed[0].zombified).toBeGreaterThan(0);
+    boss.hp = 0;
+    g.step();
+    events.push(...g.drainEvents());
+    expect(placed[0].zombified).toBe(0);
+    expect(events.some((e) => e.t === 'plantsCured' && e.by === 'bossDown')).toBe(true);
+  });
+
+  it('about 20 laser peashooters can beat him', () => {
+    const { boss } = bossFight(20, 'gardener');
+    expect(boss.hp).toBeLessThanOrEqual(0);
+  });
+
+  it('a thin defense cannot stop him', () => {
+    const { g, boss } = bossFight(6, 'gardener');
+    expect(boss.hp > 0 || g.phase === 'lost').toBe(true);
   });
 });

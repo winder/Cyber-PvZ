@@ -335,6 +335,14 @@ function react(events: SimEvent[]): void {
       case 'rocketFired': audio.play('rocket'); break;
       case 'rocketHit': audio.play('rocketBoom'); break;
       case 'summoned': audio.play('summon'); break;
+      case 'gooSprayed':
+        audio.play('goo');
+        if (e.ids.length) hud.toast(`🧪 ${e.ids.length === 1 ? 'A plant has' : `${e.ids.length} plants have`} been zombified! Laser Strike to cure!`, 3000);
+        break;
+      case 'plantsCured':
+        if (e.by !== 'time') audio.play('cure');
+        if (e.by === 'strike') hud.toast(`✨ ${e.ids.length === 1 ? 'Plant' : `${e.ids.length} plants`} cured! ✨`, 2200);
+        break;
       case 'wander':
         hud.toast(`👣 ${ZOMBIES[e.type].name} is stomping toward the ${STRUCTURES[game.structures[e.to].type].name}!`, 3000);
         break;

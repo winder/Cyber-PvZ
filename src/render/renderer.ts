@@ -18,6 +18,10 @@ const smoothstep = (x: number) => {
   const k = Math.min(1, Math.max(0, x));
   return k * k * (3 - 2 * k);
 };
+/** The purple of the Necro-Gardener's goo, and of everything it gets on. */
+const GOO = '#b14dff';
+/** Seconds his goo takes to fly from the can to the plants. */
+const GOO_FLIGHT = 0.5;
 /** How far below the ground a zombie starts climbing out of its grave (just the tombstone on its head showing). */
 const RISE_DEPTH = 1.8;
 
@@ -33,6 +37,8 @@ interface Tracked {
   speed?: number;
   /** A Disco boss's mirror ball, bouncing around inside it. */
   disco?: DiscoBall;
+  /** Plants: drawn as zombified (purple, and a wall's force field down). */
+  turned?: boolean;
 }
 
 interface Effect {
@@ -65,6 +71,10 @@ export class Renderer {
   shake: (amount: number) => void = () => {};
   /** A message for the player, with a sound (wired up to the HUD). */
   notify: (text: string, sound?: SoundId) => void = () => {};
+  /** Plants about to be zombified: seconds until the goo that's in the air lands on them. */
+  private gooLanding = new Map<number, number>();
+  /** Seconds since the Necro-Gardener walked in and every plant wilted (-1 = not wilting). */
+  private wilt = -1;
   /** This game's boss is a Disco boss. */
   discoBoss = false;
   /** Rocketeers just fired (by id): how much kick is left in the arm. */
@@ -144,6 +154,8 @@ export class Renderer {
     const hyper = g.hyperTimer > 0;
 
     // Plants
+    if (this.wilt >= 0) this.wilt = this.wilt + dt > 4.6 ? -1 : this.wilt + dt;
+    const droop = this.droop();
     const seenPlants = new Set<number>();
     for (const p of g.plants) {
       seenPlants.add(p.id);
@@ -158,8 +170,22 @@ export class Renderer {
       if (t.visual.turret) t.visual.turret.rotation.y = yaw(p.facing);
       // Walls run along their angle (local x → world direction of the angle).
       t.visual.root.rotation.y = -p.angle;
-      const pulse = hyper ? 1 + 0.08 * Math.sin(this.time * 20 + p.id) : 1;
-      if (!this.popping.has(t.visual.root)) t.visual.root.scaling.setAll(pulse);
+      const landing = this.gooLanding.get(p.id);
+      if (landing !== undefined) {
+        if (landing - dt <= 0) this.gooLanding.delete(p.id);
+        else this.gooLanding.set(p.id, landing - dt);
+      }
+      const turned = p.zombified > 0 && !this.gooLanding.has(p.id);
+      if (turned !== !!t.turned) this.setTurned(t, p, turned);
+      const pulse = hyper && !turned ? 1 + 0.08 * Math.sin(this.time * 20 + p.id) : 1;
+      if (!this.popping.has(t.visual.root)) {
+        // Wilting: sagging over and shrinking down (then springing back taller for a moment).
+        t.visual.root.scaling.set(pulse, pulse * (1 - 0.45 * droop), pulse);
+      }
+      t.visual.root.rotation.x = 0.5 * Math.max(0, droop) * Math.sin(p.id * 2.4);
+      t.visual.root.rotation.z = 0.5 * Math.max(0, droop) * Math.cos(p.id * 2.4) + (turned ? Math.sin(this.time * 7 + p.id) * 0.07 : 0);
+      // Goo bubbling up off a zombified plant.
+      if (turned && Math.random() < dt * 2.5) this.gooBubble(p.x, p.z);
       this.setBar(t.bar, p.hp / PLANTS[p.type].hp);
     }
     for (const [id, t] of this.plants) {
@@ -270,6 +296,125 @@ export class Renderer {
     this.world.decor?.update(dt, g.zombies.some((z) => ZOMBIES[z.type].boss));
   }
 
+  /**
+   * How wilted every plant is right now: 0 = standing, 1 = flat out. Dips
+   * below 0 for a moment as they spring back up.
+   */
+  private droop(): number {
+    const t = this.wilt;
+    if (t < 0) return 0;
+    const down = smoothstep(t / 0.8), up = smoothstep((t - 3.4) / 0.45);
+    const spring = t > 3.85 ? Math.sin(((t - 3.85) / 0.75) * Math.PI) * 0.22 : 0;
+    return down * (1 - up) - spring;
+  }
+
+  /** Show a plant as zombified (purple all over, its force field down), or back to normal. */
+  private setTurned(t: Tracked, p: { x: number; z: number }, turned: boolean): void {
+    t.turned = turned;
+    for (const m of t.visual.root.getChildMeshes()) {
+      if (m === t.bar) continue;
+      m.renderOverlay = turned;
+      m.overlayColor = Color3.FromHexString(GOO);
+      m.overlayAlpha = 0.6;
+      // A zombified wall lets its field drop: zombies walk through.
+      if (m.name.endsWith('-field')) m.setEnabled(!turned);
+    }
+    const y = this.world.terrain.terrainHeight(p.x, p.z) + 0.8;
+    this.burst(p.x, p.z, turned ? GOO : '#3cff6e', y);
+  }
+
+  /** A bubble of goo wobbling up off a zombified plant, and popping. */
+  private gooBubble(x: number, z: number): void {
+    const mesh = MeshBuilder.CreateSphere('gooBubble', { diameter: 0.12 + Math.random() * 0.14, segments: 6 }, this.world.scene);
+    mesh.material = this.world.mats.neon(GOO, 1, 0.8);
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 0.45;
+    mesh.position.set(x + Math.cos(a) * r, this.world.terrain.terrainHeight(x, z) + 0.5 + Math.random() * 0.6, z + Math.sin(a) * r);
+    mesh.isPickable = false;
+    const life = 0.6 + Math.random() * 0.5, sway = Math.random() * 6;
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        mesh.position.y += dt * 0.9;
+        mesh.position.x += Math.sin(t * 9 + sway) * dt * 0.25;
+        // Swells, then pops.
+        mesh.scaling.setAll(t > life * 0.85 ? 1.6 : 0.6 + (t / life) * 0.6);
+        mesh.visibility = t > life * 0.85 ? 0.4 : 0.9;
+        return t < life;
+      },
+      dispose: () => mesh.dispose(),
+    });
+  }
+
+  /**
+   * The Necro-Gardener tips his can: a stream of goo arcs over from the spout
+   * and splatters across everything within `radius` of (x, z). The plants it
+   * lands on turn once it gets there.
+   */
+  private gooSpray(id: number, x: number, z: number, radius: number, ids: number[]): void {
+    const { scene, mats, terrain } = this.world;
+    const shooter = this.zombies.get(id);
+    const muzzle = shooter?.visual.muzzle;
+    const sim = this.game.zombies.find((o) => o.id === id);
+    const from = muzzle
+      ? muzzle.getAbsolutePosition().clone()
+      : new Vector3(sim?.x ?? x, terrain.terrainHeight(sim?.x ?? x, sim?.z ?? z) + 2.5, sim?.z ?? z);
+    const ground = terrain.terrainHeight(x, z);
+    this.recoil.set(id, 1);
+    for (const pid of ids) this.gooLanding.set(pid, GOO_FLIGHT);
+
+    // The stream: blobs leaving the spout one after another, each to its own spot.
+    const blobs = Array.from({ length: 16 }, (_, i) => {
+      const mesh = MeshBuilder.CreateSphere('gooBlob', { diameter: 0.22 + Math.random() * 0.2, segments: 6 }, scene);
+      mesh.material = mats.neon(GOO, 1.1, 0.9);
+      mesh.isPickable = false;
+      mesh.setEnabled(false);
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * radius * 0.85;
+      const to = new Vector3(x + Math.cos(a) * r, ground + 0.4, z + Math.sin(a) * r);
+      return { mesh, to, start: (i / 16) * 0.3 };
+    });
+    const arc = 1.2 + Vector3.Distance(from, new Vector3(x, ground, z)) * 0.2;
+    // The puddle it leaves: a ring racing outward, and a pool that soaks away.
+    const ring = MeshBuilder.CreateTorus('gooRing', { diameter: radius * 2, thickness: 0.2, tessellation: 32 }, scene);
+    ring.material = mats.neon(GOO, 1.4, 0.8);
+    ring.position.set(x, ground + 0.12, z);
+    const pool = MeshBuilder.CreateDisc('gooPool', { radius, tessellation: 32 }, scene);
+    pool.material = mats.neon(GOO, 0.9, 0.45);
+    pool.rotation.x = Math.PI / 2;
+    pool.position.set(x, ground + 0.08, z);
+    for (const m of [ring, pool]) {
+      m.isPickable = false;
+      m.setEnabled(false);
+    }
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        for (const b of blobs) {
+          const k = (t - b.start) / (GOO_FLIGHT - 0.3 + 0.25);
+          b.mesh.setEnabled(k > 0 && k < 1);
+          if (k <= 0 || k >= 1) continue;
+          b.mesh.position.copyFrom(Vector3.Lerp(from, b.to, k));
+          b.mesh.position.y += Math.sin(k * Math.PI) * arc;
+          b.mesh.scaling.set(1, 1 + 0.5 * Math.sin(k * Math.PI), 1);
+        }
+        const landed = t - GOO_FLIGHT;
+        ring.setEnabled(landed > 0 && landed < 0.5);
+        ring.scaling.setAll(0.2 + Math.min(1, landed / 0.35) * 0.8);
+        ring.visibility = Math.max(0, 1 - landed / 0.5);
+        pool.setEnabled(landed > 0);
+        pool.scaling.setAll(Math.min(1, 0.3 + landed / 0.25));
+        pool.visibility = Math.max(0, 1 - landed / 2.2);
+        return landed < 2.2;
+      },
+      dispose: () => {
+        for (const b of blobs) b.mesh.dispose();
+        ring.dispose();
+        pool.dispose();
+      },
+    });
+  }
+
   /** Kick the launcher arm up after a shot; raise the free arm to call up the crew. */
   private gesture(id: number, armR: TransformNode | undefined, armL: TransformNode | undefined, dt: number): void {
     const kick = this.recoil.get(id);
@@ -305,7 +450,10 @@ export class Renderer {
     this.blasts = [];
     for (const e of events) {
       switch (e.t) {
-        case 'shot': this.beam(e.fromX, e.fromZ, e.toX, e.toZ, e.toAir, PLANTS[e.kind].color); break;
+        case 'shot': this.beam(e.fromX, e.fromZ, e.toX, e.toZ, e.toAir, e.turned ? GOO : PLANTS[e.kind].color); break;
+        case 'gooSprayed': this.gooSpray(e.id, e.x, e.z, e.radius, e.ids); break;
+        // Every plant wilts as the Necro-Gardener walks in.
+        case 'bossSpawn': if (ZOMBIES[e.type].goo) this.wilt = 0; break;
         case 'zombieDied': {
           const def = ZOMBIES[e.type];
           if (def.boss && !def.death) {

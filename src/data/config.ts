@@ -17,7 +17,7 @@
 import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
-export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain';
+export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain' | 'gardener';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
@@ -76,16 +76,19 @@ export interface ZombieDef {
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
   /** Something held in (or in place of) the right hand. */
-  weapon?: 'scythe' | 'rocketLauncher';
+  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan';
   /** A pet that rides on its shoulder. Looks only. */
   pet?: 'parrot';
-  /** Worn on the head: a clump of grass with the tombstone it rose from stuck in it. */
-  hat?: 'tombstone';
+  /**
+   * Worn on the head: a clump of grass with the tombstone it rose from stuck
+   * in it, or a cracked glass greenhouse.
+   */
+  hat?: 'tombstone' | 'glassHelmet';
   /**
    * A death animation only this zombie has, played instead of a common one
    * some of the time. Looks only.
    */
-  death?: 'jetpackBlast' | 'shieldSquish' | 'goDownWithShip';
+  death?: 'jetpackBlast' | 'shieldSquish' | 'goDownWithShip' | 'overwatered';
   /**
    * Coming up out of the graves: takes `time` seconds to climb out (standing
    * still), from a tombstone at least `minPathDistance` from the nearest base
@@ -107,6 +110,12 @@ export interface ZombieDef {
    * between `min` and `max` seconds (the first call comes after `first`).
    */
   summon?: { zombie: ZombieId; count: number; first: number; min: number; max: number };
+  /**
+   * Sprays goo every `every` seconds (the first after `first`) at the nearest
+   * healthy plant within `range`, while it walks. Every healthy plant within
+   * `radius` of where it lands is zombified for `duration` seconds.
+   */
+  goo?: { range: number; radius: number; every: number; first: number; duration: number };
   /** Attacks hit every plant within this distance (a wide swing). */
   sweep?: number;
   /**
@@ -291,6 +300,28 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     rockets: { range: 10, damage: 60, radius: 1.6, every: 4, speed: 11 },
     summon: { zombie: 'cyborg', count: 2, first: 6, min: 9, max: 16 },
   },
+  // A final boss: a zombie gardener in a cracked glass greenhouse helmet, with
+  // a watering can of purple goo for a right hand. He doesn't chew through a
+  // defense: he waters it, and it turns on its owner.
+  gardener: {
+    name: 'Necro-Gardener',
+    icon: '🧪',
+    hp: 4200,
+    speed: 0.7,
+    dps: 50,
+    armor: 0.1,
+    flying: false,
+    radius: 1.1,
+    color: '#b14dff',
+    model: 'gardener',
+    skin: 'skins/gardener.png',
+    scale: 3,
+    weapon: 'wateringCan',
+    hat: 'glassHelmet',
+    death: 'overwatered',
+    boss: true,
+    goo: { range: 9, radius: 2.2, every: 8, first: 3, duration: 7 },
+  },
   // A final boss. Named after his creator.
   zomwes: {
     name: 'ZomWes 8000',
@@ -315,7 +346,7 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
 };
 
 /** The final wave's boss is one of these, picked at random each game. */
-export const BOSSES: ZombieId[] = ['zomwes', 'captain'];
+export const BOSSES: ZombieId[] = ['zomwes', 'captain', 'gardener'];
 
 export const STRUCTURES: Record<StructureId, StructureDef> = {
   greenhouse: {
@@ -887,6 +918,6 @@ export type SoundId =
   | 'laser' | 'cryo' | 'place' | 'sell' | 'chomp' | 'zombieDie' | 'plantDie'
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
   | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie'
-  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk';
+  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk' | 'goo' | 'cure';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};

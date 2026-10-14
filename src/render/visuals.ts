@@ -8,13 +8,13 @@ import { skinUrl } from '../skins';
 import {
   BlockTemplate, loadSkinTexture, skinMaterial, UNIT, type BlockCharacter,
 } from './blockModel';
-import { skinUnits, type ModelId } from '../models/models';
+import { MODELS, skinUnits, type ModelId } from '../models/models';
 import { getCustomSkin } from '../skins';
 import { createBrain } from './brain';
 import { buildTombstoneHat, type StoneLook } from './graveyard';
 import { buildHair } from './hair';
 import { Parrot } from './parrot';
-import { attachWeapon } from './weapons';
+import { attachWeapon, buildGlassHelmet } from './weapons';
 
 /**
  * A thing drawn in the world. `root` is moved/rotated by the renderer.
@@ -440,6 +440,13 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
       grass.rotation.z = Math.sin(time * 1.6 + name.length) * 0.06 + (moving ? Math.sin(time * 9) * 0.04 : 0);
       grass.rotation.x = Math.sin(time * 1.1) * 0.04;
     };
+  }
+  if (def.hat === 'glassHelmet' && character.joints.head) {
+    const headDef = MODELS[def.model!].parts.find((p) => p.role === 'head');
+    const helmet = buildGlassHelmet(scene, `${name}-helmet`, headDef?.size[0]);
+    helmet.parent = character.joints.head;
+    const glow = scene.getGlowLayerByName('glow');
+    for (const m of helmet.getChildMeshes()) glow?.addExcludedMesh(m as Mesh);
   }
   return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet };
 }

@@ -96,8 +96,8 @@ cheaper.
 
 **Boss** — The final-wave zombie with a health bar and announcements. Each
 game picks one at random (`BOSSES`; `?boss=` in the address to choose):
-**ZomWes 8000**, whose body is the **Westbot** model, or the **Ship
-Captain**. Code: `Game.boss`. *Avoid:* "Wesbot", "Webot".
+**ZomWes 8000**, whose body is the **Westbot** model, the **Ship
+Captain**, or the **Necro-Gardener**. Code: `Game.boss`. *Avoid:* "Wesbot", "Webot".
 
 **Disco boss** — Every 3rd game played (counting **plays** on all levels,
 `DISCO_EVERY`), whichever boss turns up has a mirror ball bouncing around
@@ -113,6 +113,21 @@ head, and flies off to safety when he's nearly beaten (looks only). He
 **goes down with his ship**: a last rocket bursts into fireworks, he salutes
 and sinks into the ground. Code: `ZombieDef.rockets`, `ZombieDef.summon`,
 `ZombieDef.pet`, `Game.rockets`.
+
+**Necro-Gardener** — A boss in a cracked glass greenhouse helmet, with a
+watering can of purple **goo** for a right hand. He **sprays** the nearest
+healthy plants as he walks, and they become **zombified plants**. As he
+walks in, every plant **wilts** for a moment; he dies **overwatered**: he
+empties the can over himself and a giant Solar Flower grows out of him
+(both looks only). Code: `ZombieDef.goo`.
+
+**Zombified plant** — A plant with goo on it, working for the zombies: a
+shooter fires at the nearest base or healthy plant instead of at zombies, a
+Solar Flower makes no sun, and a **Wall** drops its field so zombies walk
+through. Zombies leave it alone. It's **cured** when the goo wears off, when
+an Orbital Laser Strike lands on it (which doesn't hurt it), when the
+Necro-Gardener falls, or when the wave ends. Code: `Plant.zombified`.
+*Avoid:* "infected", "turned" in the UI (code uses `turned` for the look).
 
 **Giant** — A zombie that walks straight over rocks and ravines and
 **stomps** every plant near it when one is in the way (ZomWes).

@@ -194,7 +194,9 @@ export class Spectacle {
           this.hooks.card(
             def.name.toUpperCase(),
             `HAS ENTERED THE ${this.level.name.toUpperCase()}`,
-            guards ? `with ${guards.count} ${ZOMBIES[guards.zombie].name}s` : def.pet ? `and his trusty ${def.pet}` : '',
+            guards ? `with ${guards.count} ${ZOMBIES[guards.zombie].name}s`
+            : def.pet ? `and his trusty ${def.pet}`
+            : def.goo ? 'and your plants are thirsty' : '',
           );
           // It smashes its way in.
           this.crumble(boss.x, boss.z, 40);

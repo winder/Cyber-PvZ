@@ -6,7 +6,7 @@ import { ZOMBIES, type ZombieId } from '../data/config';
 import { MODELS } from '../models/models';
 import { animate, assemble, buildPartMesh, skinMaterial, type BlockCharacter } from '../render/blockModel';
 import { buildHair } from '../render/hair';
-import { attachWeapon } from '../render/weapons';
+import { attachWeapon, buildGlassHelmet } from '../render/weapons';
 import { skinUnits } from '../models/models';
 import { clearCustomSkin, getCustomSkin, saveCustomSkin } from '../skins';
 import { faceAt, faceLabel, layoutFaces, mirrorPixel, type FaceInfo } from './faces';
@@ -340,6 +340,11 @@ function buildCharacter(id: ZombieId): void {
   if (weapon) {
     const w = attachWeapon(scene, character, weapon, 'weapon');
     if (w) extras.push(...w.getChildMeshes());
+  }
+  if (ZOMBIES[id].hat === 'glassHelmet' && character.joints.head) {
+    const helmet = buildGlassHelmet(scene, 'helmet', MODELS[model].parts.find((p) => p.role === 'head')?.size[0]);
+    helmet.parent = character.joints.head;
+    extras.push(...helmet.getChildMeshes());
   }
   const kind = ZOMBIES[id].hair;
   if (kind && character.joints.head) {
