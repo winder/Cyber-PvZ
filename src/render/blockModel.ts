@@ -254,8 +254,10 @@ function walkCycle(c: BlockCharacter, t: number, s: PoseState, seed: number): vo
   if (j.body) j.body.rotation.x = rest('body')[0];
   if (j.armR) j.armR.rotation.z = rest('armR')[2];
   const phase = t + seed * 0.37;
-  const swing = MODELS[c.model].walkSwing ?? 0.6;
-  const walk = s.moving && !s.flying ? Math.sin(phase * 7) : 0;
+  // Riders keep their legs on the footpegs and their hands on the bars.
+  const riding = MODELS[c.model].gait === 'ride';
+  const swing = riding ? 0 : MODELS[c.model].walkSwing ?? 0.6;
+  const walk = s.moving && !s.flying && !riding ? Math.sin(phase * 7) : 0;
 
   if (j.legR && j.legL) {
     if (s.flying) {

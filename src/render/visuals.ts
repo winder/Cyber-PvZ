@@ -14,6 +14,7 @@ import { createBrain } from './brain';
 import { buildTombstoneHat, type StoneLook } from './graveyard';
 import { buildHair } from './hair';
 import { Parrot } from './parrot';
+import { rockExtras } from './rock';
 import { attachWeapon, buildGlassHelmet } from './weapons';
 
 /**
@@ -447,6 +448,14 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
     helmet.parent = character.joints.head;
     const glow = scene.getGlowLayerByName('glow');
     for (const m of helmet.getChildMeshes()) glow?.addExcludedMesh(m as Mesh);
+  }
+  const extra = rockExtras(scene, character, def, name);
+  if (extra) {
+    const before = update;
+    update = (time, moving) => {
+      before?.(time, moving);
+      extra(time, moving);
+    };
   }
   return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet };
 }

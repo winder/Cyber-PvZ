@@ -1,7 +1,7 @@
 import { Engine } from '@babylonjs/core';
 import { Audio } from './audio';
 import {
-  ABILITIES, BOSSES, DISCO_EVERY, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type LevelDef, type PlantId, type ZombieId,
+  ABILITIES, DISCO_EVERY, GAME_SPEED, LEVELS, PLANTS, STRUCTURES, ZOMBIES, abilityLook, type AbilityId, type LevelDef, type PlantId, type ZombieId,
 } from './data/config';
 import { Game, TICK_RATE, type SimEvent } from './sim/game';
 import { isRotatable } from './sim/shapes';
@@ -42,10 +42,10 @@ function pickLevel(): LevelDef {
 }
 const level = pickLevel();
 
-/** Which boss the final wave brings: ?boss=captain (or zomwes). Random if not given. */
+/** Which boss the final wave brings: ?boss=captain (or zomwes, gardener, satan). Random if not given. */
 function pickBoss(): ZombieId | undefined {
   const want = new URLSearchParams(location.search).get('boss');
-  return BOSSES.find((b) => b === want);
+  return (Object.keys(ZOMBIES) as ZombieId[]).find((b) => b === want && ZOMBIES[b].boss);
 }
 
 const game = new Game(Date.now() & 0xffff, level, { boss: pickBoss() });
@@ -150,7 +150,7 @@ function makeHud(): Hud {
       }
       if (id === 'orbitalStrike') {
         ui.aiming = ui.aiming === id ? null : id;
-        if (ui.aiming) hud.toast('Tap where to strike!');
+        if (ui.aiming) hud.toast(`Tap where to aim the ${abilityLook(level, id).name}!`);
         else renderer.setAim(false);
         audio.play('click');
       } else {
@@ -329,15 +329,19 @@ function react(events: SimEvent[]): void {
       // Its entrance (name card and all) is staged by the Spectacle.
       case 'bossSpawn':
         audio.play('bossRoar');
+        // He brings a biker gang, and you hear them first.
+        if (ZOMBIES[e.type].riff) audio.play('engine');
         if (renderer.discoBoss) hud.toast(`🪩 ${ZOMBIES[e.type].name} has DISCO FEVER! 🪩`, 4000);
         break;
       case 'stomp': audio.play('stomp'); break;
       case 'rocketFired': audio.play('rocket'); break;
       case 'rocketHit': audio.play('rocketBoom'); break;
       case 'summoned': audio.play('summon'); break;
+      case 'flameRiff': audio.play('flame'); break;
+      case 'zapRiff': audio.play('zap'); break;
       case 'gooSprayed':
         audio.play('goo');
-        if (e.ids.length) hud.toast(`🧪 ${e.ids.length === 1 ? 'A plant has' : `${e.ids.length} plants have`} been zombified! Laser Strike to cure!`, 3000);
+        if (e.ids.length) hud.toast(`🧪 ${e.ids.length === 1 ? 'A plant has' : `${e.ids.length} plants have`} been zombified! ${abilityLook(level, 'orbitalStrike').name} to cure!`, 3000);
         break;
       case 'plantsCured':
         if (e.by !== 'time') audio.play('cure');
@@ -351,11 +355,13 @@ function react(events: SimEvent[]): void {
       case 'plantDied': audio.play('plantDie'); break;
       case 'chomp': audio.play('chomp'); break;
       case 'structureHit': audio.play('structureHit'); break;
-      case 'strikeHit': audio.play('orbital'); break;
-      case 'hyperSun':
-        audio.play('hyperSun');
-        hud.toast('🌞 HYPER SUN! 🌞');
+      case 'strikeHit': audio.play(abilityLook(level, 'orbitalStrike').sound ?? 'orbital'); break;
+      case 'hyperSun': {
+        const look = abilityLook(level, 'hyperSun');
+        audio.play(look.sound ?? 'hyperSun');
+        hud.toast(`${look.icon} ${look.name.toUpperCase()}! ${look.icon}`);
         break;
+      }
       case 'structureDestroyed': {
         const s = game.structures[e.index];
         audio.play('structureDie');

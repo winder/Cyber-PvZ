@@ -93,6 +93,13 @@ export class NavGrid {
     }
   }
 
+  /** Block every cell whose middle passes the test (arena stands, rows of seats). */
+  blockWhere(test: (x: number, z: number) => boolean): void {
+    for (let cell = 0; cell < this.blocked.length; cell++) {
+      if (test(this.centerX(cell), this.centerZ(cell))) this.blocked[cell] = 1;
+    }
+  }
+
   setPlant(id: number, x: number, z: number, radius: number, cost: number): void {
     this.forCellsInCircle(x, z, radius + PLANT_BLOCK_PAD, (cell) => {
       if (this.blocked[cell]) return;

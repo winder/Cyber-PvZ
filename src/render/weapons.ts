@@ -3,6 +3,7 @@ import {
 } from '@babylonjs/core';
 import { MODELS } from '../models/models';
 import { UNIT, type BlockCharacter } from './blockModel';
+import { buildGuitar, buildRoadCase } from './rock';
 
 // Weapons held by blocky characters. Built in skin units, like the models.
 
@@ -163,16 +164,36 @@ export function buildWateringCan(scene: Scene, name: string): TransformNode {
   return root;
 }
 
-type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan';
+type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase';
 
 const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode> = {
   scythe: buildScythe,
   rocketLauncher: buildRocketLauncher,
   wateringCan: buildWateringCan,
+  guitar: buildGuitar,
+  roadCase: buildRoadCase,
 };
 
-/** Put a weapon in the character's right hand (or, for a launcher or watering can, in place of it). */
+/**
+ * Put a weapon in the character's right hand (or, for a launcher or watering
+ * can, in place of it). Two-handed things (a guitar slung across the gut, a
+ * road case held out in front) hang off the body instead.
+ */
 export function attachWeapon(scene: Scene, character: BlockCharacter, kind: WeaponKind, name: string): TransformNode | null {
+  if (kind === 'guitar' || kind === 'roadCase') {
+    const body = character.joints.body;
+    if (!body) return null;
+    const weapon = WEAPONS[kind](scene, name);
+    weapon.parent = body;
+    if (kind === 'guitar') {
+      // Slung low across the gut, the neck angled up to the left hand.
+      weapon.position.set(0.5 * UNIT, -7.5 * UNIT, 8 * UNIT);
+      weapon.rotation.set(-0.1, 0, 0.95);
+    } else {
+      weapon.position.set(0, -3.5 * UNIT, 8.5 * UNIT);
+    }
+    return weapon;
+  }
   const arm = character.joints.armR;
   const armDef = MODELS[character.model].parts.find((p) => p.role === 'armR');
   if (!arm || !armDef) return null;

@@ -22,6 +22,7 @@ export type DeathKind =
   | 'shieldSquish' // its own riot shield flattens it
   | 'goDownWithShip' // the Ship Captain: a last rocket, a salute, and down he goes
   | 'overwatered' // the Necro-Gardener: waters himself, and a giant Solar Flower grows out of him
+  | 'backToHell' // Satan: smashes his guitar, the floor opens in fire, and down he goes, horns up
   | 'shatter'; // the Orbital Laser Strike blows it apart, some bits at the screen
 
 const COMMON: DeathKind[] = ['dismember', 'shocked', 'zapped'];
@@ -76,6 +77,7 @@ export function playDeath(kind: DeathKind, visual: Visual, stage: DeathStage, op
     case 'shieldSquish': return rig.shield ? shieldSquish(rig, stage) : shocked(rig, stage);
     case 'goDownWithShip': return goDownWithShip(rig, stage);
     case 'overwatered': return overwatered(rig, stage);
+    case 'backToHell': return backToHell(rig, stage);
     case 'shatter': return shatter(rig, stage, opts.blast ?? { x: rig.root.position.x, z: rig.root.position.z }, opts.toCamera ?? 0);
   }
 }
@@ -1311,5 +1313,125 @@ function overwatered(rig: Rig, stage: DeathStage): DeathEffect {
   });
   show.own(root);
   show.own(vine);
+  return show;
+}
+
+/**
+ * Satan goes back where he came from. He swings the guitar up over his head
+ * and smashes it into the floor (bits everywhere); the floor cracks open into
+ * a ring of fire; and he sinks into it, flames roaring up round him, throwing
+ * the horns with his last hand above ground. The hole closes over in smoke.
+ */
+function backToHell(rig: Rig, stage: DeathStage): DeathEffect {
+  const s = rig.scale;
+  const root = rig.root;
+  const { scene, mats } = stage;
+  const joint = (role: string) => root.getChildTransformNodes(false).find((n) => n.name.endsWith(`-${role}-joint`));
+  const armR = joint('armR'), armL = joint('armL'), head = joint('head'), body = joint('body');
+  const guitar = root.getChildTransformNodes(false).find((n) => n.name.endsWith('-weapon'));
+  const startR = armR?.rotation.clone() ?? Vector3.Zero();
+  const startL = armL?.rotation.clone() ?? Vector3.Zero();
+  const guitarPos = guitar?.position.clone() ?? Vector3.Zero();
+  const guitarRot = guitar?.rotation.clone() ?? Vector3.Zero();
+  const ground = () => stage.terrain.terrainHeight(root.position.x, root.position.z);
+  const RAISE = 0.7, SMASH = 0.9, OPEN = 1.5, SINK = 1.9, DOWN = 4.6, CLOSE = 5.2, END = 6;
+  const tall = 1.9 * s, R = 0.75 * s;
+
+  // The hole: a glowing pool of fire with a ring of flames round the rim.
+  const pit = new TransformNode('hellPit', scene);
+  const glow = MeshBuilder.CreateDisc('hellPitGlow', { radius: R, tessellation: 32 }, scene);
+  glow.material = mats.neon('#ff4a10', 1.6, 0.95);
+  glow.rotation.x = Math.PI / 2;
+  glow.parent = pit;
+  const rim = MeshBuilder.CreateTorus('hellPitRim', { diameter: R * 2, thickness: 0.12 * s, tessellation: 32 }, scene);
+  rim.material = mats.neon('#ffd23a', 1.8);
+  rim.parent = pit;
+  const flames = Array.from({ length: 10 }, (_, i) => {
+    const f = MeshBuilder.CreateCylinder(`hellFlame${i}`, { height: 1, diameterTop: 0, diameterBottom: 0.3 * s, tessellation: 6 }, scene);
+    f.material = mats.neon(i % 2 ? '#ff6a10' : '#ffb21f', 1.8, 0.85);
+    f.parent = pit;
+    const a = (i / 10) * Math.PI * 2;
+    f.position.set(Math.cos(a) * R, 0, Math.sin(a) * R);
+    return f;
+  });
+  for (const m of [glow, rim, ...flames]) m.isPickable = false;
+  pit.setEnabled(false);
+
+  let smashed = false, opened = false, closed = false;
+  let embers = 0;
+  const show: Show = new Show((t, dt) => {
+    for (const leg of rig.legs) leg.rotation.x = 0;
+    const g = ground();
+    // Up over his head with the guitar...
+    const up = smooth(t / RAISE);
+    const down = smooth((t - RAISE) / (SMASH - RAISE));
+    const swing = up * (1 - down);
+    if (armR) armR.rotation.set(startR.x + (-2.9 - startR.x) * swing + (-0.9 - startR.x) * down * (t < OPEN ? 1 : 0), 0, startR.z * (1 - swing));
+    if (armL && t < SINK) armL.rotation.set(startL.x + (-2.9 - startL.x) * swing + (-0.9 - startL.x) * down, 0, startL.z * (1 - swing));
+    if (body) body.rotation.x = -0.35 * swing + 0.45 * down * (t < OPEN ? 1 : 1 - smooth((t - OPEN) / 0.4));
+    if (guitar && !smashed) {
+      guitar.position.set(guitarPos.x, guitarPos.y + 22 * swing * 0.05, guitarPos.z + 4 * down * 0.05);
+      guitar.rotation.set(guitarRot.x - 1.2 * swing + 1.4 * down, guitarRot.y, guitarRot.z * (1 - swing) + Math.PI * swing);
+    }
+    // ...and SMASH: splinters and sparks everywhere.
+    if (!smashed && t >= SMASH) {
+      smashed = true;
+      const at = guitar ? guitar.getAbsolutePosition().clone() : root.position.clone();
+      at.y = Math.max(g + 0.2, at.y);
+      guitar?.setEnabled(false);
+      for (let i = 0; i < 26; i++) {
+        const a = rand(0, Math.PI * 2), out = rand(2, 6);
+        const color = i % 4 === 0 ? '#ffe14d' : i % 4 === 1 ? '#dfe3ea' : i % 4 === 2 ? '#c4160c' : '#120808';
+        show.add(fleck(stage, at, new Vector3(Math.cos(a) * out, rand(3, 8), Math.sin(a) * out), color, rand(0.06, 0.14) * s / 2, rand(0.6, 1.1)));
+      }
+      show.add(puff(stage, at, '#ffe14d', 0.6 * s, 0.3, 2.2));
+      stage.shake(0.7);
+    }
+    // The floor cracks open into fire under him.
+    if (!opened && t >= OPEN) {
+      opened = true;
+      pit.setEnabled(true);
+      show.add(dustRing(stage, root.position.x, root.position.z, 1.2 * s));
+      stage.shake(0.5);
+    }
+    if (t >= OPEN) {
+      const open = smooth((t - OPEN) / 0.35) * (1 - smooth((t - DOWN) / (CLOSE - DOWN)));
+      pit.position.set(root.position.x, g + 0.06, root.position.z);
+      pit.scaling.set(Math.max(0.01, open), 1, Math.max(0.01, open));
+      for (const [i, f] of flames.entries()) {
+        const h = (0.6 + 0.5 * Math.abs(Math.sin(t * 9 + i * 1.7))) * s * open;
+        f.scaling.y = Math.max(0.01, h);
+        f.position.y = h / 2;
+      }
+      glow.visibility = 0.7 + 0.3 * Math.sin(t * 13);
+      embers -= dt;
+      if (embers <= 0 && open > 0.1) {
+        embers = 0.03;
+        const a = rand(0, Math.PI * 2), r = rand(0, R * 0.9) * open;
+        const at = new Vector3(root.position.x + Math.cos(a) * r, g + 0.1, root.position.z + Math.sin(a) * r);
+        show.add(fleck(stage, at, new Vector3(rand(-0.4, 0.4), rand(3, 7), rand(-0.4, 0.4)), Math.random() < 0.5 ? '#ff6a10' : '#ffd23a', rand(0.06, 0.12) * s / 2, rand(0.5, 0.9), -2));
+      }
+    }
+    // Down he goes, throwing the horns as he sinks.
+    if (t >= SINK) {
+      const k = smooth((t - SINK) / (DOWN - SINK));
+      root.position.y = g - tall * 1.2 * k + Math.sin(t * 30) * 0.02 * s;
+      root.rotation.z = Math.sin(t * 3) * 0.06;
+      if (armL) armL.rotation.set(-3, 0, 0.2 + Math.sin(t * 8) * 0.1);
+      if (head) head.rotation.x = -0.4;
+      if (t >= DOWN) root.setEnabled(false);
+    } else {
+      root.position.y = g;
+    }
+    // The hole closes over in a puff of smoke.
+    if (!closed && t >= CLOSE) {
+      closed = true;
+      pit.setEnabled(false);
+      show.add(puff(stage, new Vector3(root.position.x, g + 0.3, root.position.z), '#5a4a50', 1.1 * s, 0.6, 0.4));
+    }
+    return t < END;
+  });
+  show.own(root);
+  show.own(pit);
   return show;
 }

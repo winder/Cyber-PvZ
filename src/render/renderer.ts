@@ -3,7 +3,9 @@ import {
 } from '@babylonjs/core';
 import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type SoundId, type ZombieId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
-import { animate, LEAP_SECONDS, UNIT } from './blockModel';
+import { animate, LEAP_SECONDS, UNIT, type BlockCharacter } from './blockModel';
+import { MOSH_MOVES, dancePose, newPose, slamPose, type MoshMove, type Pose } from './dance';
+import { MODELS } from '../models/models';
 import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
 import { DiscoBall } from './disco';
 import { RangeRing, RING_GROUP } from './rangeRing';
@@ -39,7 +41,12 @@ interface Tracked {
   disco?: DiscoBall;
   /** Plants: drawn as zombified (purple, and a wall's force field down). */
   turned?: boolean;
+  /** In the mosh pit: the move it's doing, and its rock shield. */
+  mosh?: { move: MoshMove; rocking: boolean; shield: Mesh; ring: Mesh; t: number };
 }
+
+/** The hot pink of the mosh pit's rock shields. */
+const ROCK_SHIELD = '#ff2fd0';
 
 interface Effect {
   update(dt: number): boolean; // false = finished
@@ -82,6 +89,8 @@ export class Renderer {
   /** Summoners calling up their crew (by id): seconds left with the arm raised. */
   private beckon = new Map<number, number>();
   private deathStage: DeathStage;
+  private dancePose: Pose = newPose();
+  private shieldMat: StandardMaterial | null = null;
   private barMats: StandardMaterial[] = [];
   private time = 0;
 
@@ -247,6 +256,7 @@ export class Renderer {
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
+        if (z.moshing) this.rockOut(t, character, z.rocking > 0, z.id, ground, def.scale ?? 1);
         if (z.rising > 0 && def.rise) {
           // Clawing up out of the grave: shoves up in fits and starts, trembling.
           const k = 1 - z.rising / def.rise.time;
@@ -263,7 +273,12 @@ export class Renderer {
         }
       } else {
         root.rotation.x = chewing ? 0.25 : 0;
+        // Box-built zombies just spin on the spot in the pit.
+        if (z.moshing && z.rocking > 0) root.rotation.y += this.time * 9;
       }
+      this.moshShield(t, z.moshing, dt);
+      // Riff players crackle with electricity now and then.
+      if (def.riff && Math.random() < dt * 4) this.spark(t.visual.muzzle);
       // Bosses have the big bar at the top of the screen instead.
       this.setBar(t.bar, def.boss ? 1 : z.hp / def.hp);
     }
@@ -448,6 +463,8 @@ export class Renderer {
 
   handle(events: SimEvent[]): void {
     this.blasts = [];
+    this.world.decor?.handle?.(events);
+    const ownStrike = !this.world.decor?.replacesStrike;
     for (const e of events) {
       switch (e.t) {
         case 'shot': this.beam(e.fromX, e.fromZ, e.toX, e.toZ, e.toAir, e.turned ? GOO : PLANTS[e.kind].color); break;
@@ -469,9 +486,9 @@ export class Renderer {
           break;
         }
         case 'plantDied': this.burst(e.x, e.z, '#3cff6e', this.world.terrain.terrainHeight(e.x, e.z) + 0.6); break;
-        case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay); break;
+        case 'strikeTargeted': this.strikeMarker(e.x, e.z, e.delay, ownStrike); break;
         case 'strikeHit':
-          this.strikeBlast(e.x, e.z, e.radius);
+          if (ownStrike) this.strikeBlast(e.x, e.z, e.radius);
           this.blasts.push({ x: e.x, z: e.z });
           // A strike throws a few bits at the screen, however many it kills.
           this.screenBits = 3;
@@ -481,6 +498,8 @@ export class Renderer {
         case 'rocketFired': this.rocket(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight); break;
         case 'rocketHit': this.explosion(e.x, e.z, e.radius); break;
         case 'summoned': this.summoned(e.id, e.ids); break;
+        case 'flameRiff': this.flameRiff(e.id, e.x, e.z, e.toX, e.toZ, e.spread); break;
+        case 'zapRiff': this.zapRiff(e.id, e.chain); break;
         case 'jumped': this.buildStructures(); break;
         default: break;
       }
@@ -539,10 +558,11 @@ export class Renderer {
     });
   }
 
-  private strikeMarker(x: number, z: number, delay: number): void {
+  /** Where the strike's coming down: a shrinking ring, and (from orbit) a targeting beam. */
+  private strikeMarker(x: number, z: number, delay: number, fromOrbit = true): void {
     const r = ABILITIES.orbitalStrike.radius;
     const ring = MeshBuilder.CreateTorus('strikeRing', { diameter: r * 2, thickness: 0.15, tessellation: 48 }, this.world.scene);
-    ring.material = this.world.mats.neon('#ff3355', 1.5);
+    ring.material = this.world.mats.neon(fromOrbit ? '#ff3355' : '#ffb21f', 1.5);
     const h = this.world.terrain.surfaceHeight(x, z);
     ring.position.set(x, h + 0.15, z);
     ring.isPickable = false;
@@ -550,6 +570,7 @@ export class Renderer {
     beam.material = this.world.mats.neon('#ff6677', 1.5, 0.5);
     beam.position.set(x, h + 20, z);
     beam.isPickable = false;
+    beam.setEnabled(fromOrbit);
     let t = 0;
     this.effects.push({
       update: (dt) => {
@@ -733,6 +754,180 @@ export class Renderer {
     });
   }
 
+  /**
+   * In the mosh pit: rocking out (one of the moves, picked fresh each time
+   * it starts) or slamming through the crowd between them.
+   */
+  private rockOut(t: Tracked, c: BlockCharacter, rocking: boolean, id: number, ground: number, scale: number): void {
+    const m = t.mosh;
+    if (!m) return;
+    if (rocking && !m.rocking) m.move = MOSH_MOVES[Math.floor(Math.random() * MOSH_MOVES.length)];
+    m.rocking = rocking;
+    const time = this.time + id * 0.37;
+    const pose = rocking ? dancePose(m.move, time, this.dancePose, 1.2) : slamPose(time, this.dancePose);
+    const riding = MODELS[c.model].gait === 'ride';
+    const roles = riding ? (['head', 'body', 'armR', 'armL'] as const) : (['head', 'body', 'armR', 'armL', 'legR', 'legL'] as const);
+    for (const role of roles) c.joints[role]?.rotation.set(...pose[role]);
+    const root = t.visual.root;
+    if (riding) {
+      // Bikers pop a wheelie instead.
+      root.rotation.x = rocking ? -0.35 - Math.abs(Math.sin(time * 3)) * 0.15 : 0;
+      return;
+    }
+    root.position.y = ground + pose.lift * UNIT * scale;
+    root.rotation.x = pose.tilt;
+  }
+
+  /** The rock shield: a pink bubble round a zombie in the mosh pit, ringed with a spinning band. */
+  private moshShield(t: Tracked, moshing: boolean, dt: number): void {
+    if (!moshing) {
+      if (t.mosh) {
+        t.mosh.shield.dispose();
+        t.mosh.ring.dispose();
+        t.mosh = undefined;
+        // Back to its resting pose (the walk only moves some of the joints).
+        const c = t.visual.character;
+        if (c) for (const [role, joint] of Object.entries(c.joints)) joint.rotation.set(...(c.rest[role as keyof typeof c.rest] ?? [0, 0, 0]));
+      }
+      return;
+    }
+    const { scene } = this.world;
+    if (!t.mosh) {
+      if (!this.shieldMat) {
+        const m = new StandardMaterial('rockShield', scene);
+        m.emissiveColor = Color3.FromHexString(ROCK_SHIELD);
+        m.diffuseColor = Color3.Black();
+        m.disableLighting = true;
+        m.alpha = 0.09;
+        m.backFaceCulling = false;
+        m.disableDepthWrite = true;
+        this.shieldMat = m;
+      }
+      const shield = MeshBuilder.CreateSphere('rockShield', { diameter: 1.9, segments: 10 }, scene);
+      shield.material = this.shieldMat;
+      shield.isPickable = false;
+      shield.parent = t.visual.root;
+      shield.position.y = 0.85;
+      // A soft bubble: only its ring glows.
+      this.world.glow.addExcludedMesh(shield);
+      const ring = MeshBuilder.CreateTorus('rockShieldRing', { diameter: 2, thickness: 0.04, tessellation: 24 }, scene);
+      ring.material = this.world.mats.neon(ROCK_SHIELD, 1.2);
+      ring.isPickable = false;
+      ring.parent = t.visual.root;
+      ring.position.y = 0.85;
+      t.mosh = { move: 'horns', rocking: false, shield, ring, t: 0 };
+      this.burst(t.x, t.z, ROCK_SHIELD, this.world.terrain.terrainHeight(t.x, t.z) + 0.9);
+    }
+    const m = t.mosh;
+    m.t += dt;
+    // The bubble lives in the zombie's space, so undo its scale (and the crowd-surf tip).
+    const s = 1 / (t.visual.root.scaling.x || 1);
+    m.shield.scaling.setAll(s * (1 + 0.05 * Math.sin(m.t * 12)));
+    m.ring.scaling.setAll(s);
+    m.ring.rotation.set(Math.sin(m.t * 2) * 0.5, m.t * 4, Math.cos(m.t * 2) * 0.5);
+  }
+
+  /** A tiny spark of electricity off a guitar. */
+  private spark(at: TransformNode | undefined): void {
+    if (!at) return;
+    const from = at.getAbsolutePosition();
+    const mesh = MeshBuilder.CreateBox('spark', { size: 0.08 }, this.world.scene);
+    mesh.material = this.world.mats.neon(Math.random() < 0.5 ? '#9fe8ff' : '#ffffff', 2);
+    mesh.position.copyFrom(from);
+    mesh.isPickable = false;
+    const v = new Vector3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).scale(3);
+    let life = 0;
+    this.effects.push({
+      update: (dt) => {
+        life += dt;
+        mesh.position.addInPlace(v.scale(dt));
+        mesh.rotation.y += dt * 20;
+        return life < 0.25;
+      },
+      dispose: () => mesh.dispose(),
+    });
+  }
+
+  /** Flame pouring out of the guitar's headstock in a cone toward (toX, toZ). */
+  private flameRiff(id: number, x: number, z: number, toX: number, toZ: number, spread: number): void {
+    const { scene, mats, terrain } = this.world;
+    const muzzle = this.zombies.get(id)?.visual.muzzle;
+    const from = muzzle ? muzzle.getAbsolutePosition().clone() : new Vector3(x, terrain.terrainHeight(x, z) + 3, z);
+    this.recoil.set(id, 1);
+    const aim = Math.atan2(toZ - z, toX - x), range = Math.hypot(toX - x, toZ - z);
+    const blobs = Array.from({ length: 34 }, (_, i) => {
+      const mesh = MeshBuilder.CreateIcoSphere('flameBlob', { radius: 0.3 + Math.random() * 0.25, subdivisions: 1 }, scene);
+      mesh.material = mats.neon(i % 3 === 0 ? '#ffd23a' : i % 3 === 1 ? '#ff6a10' : '#ff2a1a', 1.8, 0.85);
+      mesh.isPickable = false;
+      mesh.setEnabled(false);
+      const a = aim + (Math.random() * 2 - 1) * spread, d = range * (0.5 + Math.random() * 0.5);
+      const to = new Vector3(x + Math.cos(a) * d, 0, z + Math.sin(a) * d);
+      to.y = terrain.terrainHeight(to.x, to.z) + 0.3 + Math.random() * 0.8;
+      return { mesh, to, start: (i / 34) * 0.35 };
+    });
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        for (const b of blobs) {
+          const k = (t - b.start) / 0.6;
+          b.mesh.setEnabled(k > 0 && k < 1);
+          if (k <= 0 || k >= 1) continue;
+          b.mesh.position.copyFrom(Vector3.Lerp(from, b.to, Math.sqrt(k)));
+          b.mesh.scaling.setAll(0.6 + k * 1.8);
+          b.mesh.visibility = 1 - k * k;
+        }
+        return t < 1;
+      },
+      dispose: () => { for (const b of blobs) b.mesh.dispose(); },
+    });
+    for (let i = 0; i < 3; i++) this.smokePuff(from, 0.35, 0.8);
+    this.shake(0.12);
+  }
+
+  /** Lightning from the guitar, jumping from plant to plant (or onto a base). */
+  private zapRiff(id: number, chain: { x: number; z: number }[]): void {
+    const { scene, mats, terrain } = this.world;
+    const muzzle = this.zombies.get(id)?.visual.muzzle;
+    const sim = this.game.zombies.find((o) => o.id === id);
+    const first = muzzle ? muzzle.getAbsolutePosition().clone()
+      : new Vector3(sim?.x ?? chain[0].x, terrain.terrainHeight(sim?.x ?? chain[0].x, sim?.z ?? chain[0].z) + 3, sim?.z ?? chain[0].z);
+    this.recoil.set(id, 1);
+    const points = [first, ...chain.map((p) => new Vector3(p.x, terrain.terrainHeight(p.x, p.z) + 1, p.z))];
+    const bolts: Mesh[] = [];
+    const jag = () => {
+      for (const b of bolts) b.dispose();
+      bolts.length = 0;
+      for (let i = 0; i < points.length - 1; i++) {
+        const a = points[i], b = points[i + 1];
+        const path: Vector3[] = [a];
+        for (let k = 1; k < 6; k++) {
+          const p = Vector3.Lerp(a, b, k / 6);
+          path.push(p.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).scale(0.7)));
+        }
+        path.push(b);
+        const bolt = MeshBuilder.CreateTube('zap', { path, radius: 0.07, tessellation: 4 }, scene);
+        bolt.material = mats.neon(i % 2 ? '#9fe8ff' : '#ffffff', 2.2);
+        bolt.isPickable = false;
+        bolts.push(bolt);
+      }
+    };
+    jag();
+    for (const p of points.slice(1)) this.burst(p.x, p.z, '#9fe8ff', p.y);
+    let t = 0, next = 0.06;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        if (t > next) {
+          next += 0.06;
+          jag();
+        }
+        return t < 0.7;
+      },
+      dispose: () => { for (const b of bolts) b.dispose(); },
+    });
+  }
+
   private planDeath(type: ZombieId, by: 'plant' | 'strike', x: number, z: number) {
     const kind = pickDeath(type, by);
     if (kind !== 'shatter') return { type, kind, toCamera: 0 };
@@ -750,6 +945,11 @@ export class Renderer {
     this.recoil.delete(id);
     this.beckon.delete(id);
     t.disco?.dispose();
+    if (t.mosh) {
+      t.mosh.shield.dispose();
+      t.mosh.ring.dispose();
+      t.mosh = undefined;
+    }
     // Anything riding on it gets away first.
     if (t.visual.pet) {
       t.visual.pet.flee();

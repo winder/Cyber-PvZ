@@ -6,6 +6,7 @@ import { ZOMBIES, type ZombieId } from '../data/config';
 import { MODELS } from '../models/models';
 import { animate, assemble, buildPartMesh, skinMaterial, type BlockCharacter } from '../render/blockModel';
 import { buildHair } from '../render/hair';
+import { rockExtras } from '../render/rock';
 import { attachWeapon, buildGlassHelmet } from '../render/weapons';
 import { skinUnits } from '../models/models';
 import { clearCustomSkin, getCustomSkin, saveCustomSkin } from '../skins';
@@ -346,6 +347,10 @@ function buildCharacter(id: ZombieId): void {
     helmet.parent = character.joints.head;
     extras.push(...helmet.getChildMeshes());
   }
+  // Horns, the tail's spade, a chopper: also for show.
+  const before = new Set(scene.meshes);
+  rockExtras(scene, character, ZOMBIES[id], 'extra');
+  for (const m of scene.meshes) if (!before.has(m)) extras.push(m);
   const kind = ZOMBIES[id].hair;
   if (kind && character.joints.head) {
     const hair = buildHair(scene, 'hair', kind, model);

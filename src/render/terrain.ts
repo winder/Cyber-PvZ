@@ -48,12 +48,13 @@ export class Terrain {
   private readonly pads: { x: number; z: number; r: number; h: number }[];
 
   constructor(readonly map: MapDef) {
-    this.pads = map.structures.map((s) => ({
+    // On a stage, the bases already stand on the flat.
+    this.pads = map.stage ? [] : map.structures.map((s) => ({
       x: s.x, z: s.z, r: STRUCTURES[s.id].radius, h: this.natural(s.x, s.z),
     }));
   }
 
-  /** Rolling hills, and the map's big hill (mound) if it has one. */
+  /** Rolling hills, the map's big hill (mound) and craters, and a stage. */
   private natural(x: number, z: number): number {
     let h = hills(x, z) * this.map.hills;
     const m = this.map.mound;
@@ -63,6 +64,8 @@ export class Terrain {
       h += (m.height - h) * up;
     }
     for (const c of this.map.craters ?? []) h += crater(Math.hypot(x - c.x, z - c.z) / c.r, c.r);
+    const stage = this.map.stage, fan = this.map.fan;
+    if (stage && fan) h += stage.height * (1 - smoothstep(stage.radius - 0.4, stage.radius + 0.4, Math.hypot(x - fan.x, z - fan.z)));
     return h;
   }
 

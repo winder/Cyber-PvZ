@@ -17,7 +17,9 @@
 import type { ModelId } from '../models/models';
 
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
-export type ZombieId = 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain' | 'gardener';
+export type ZombieId =
+  | 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain' | 'gardener'
+  | 'satan' | 'biker' | 'roadie';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
@@ -76,19 +78,21 @@ export interface ZombieDef {
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
   /** Something held in (or in place of) the right hand. */
-  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan';
+  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase';
+  /** Something it rides (drawn under it, wheels turning). Looks only. */
+  mount?: 'motorcycle';
   /** A pet that rides on its shoulder. Looks only. */
   pet?: 'parrot';
   /**
    * Worn on the head: a clump of grass with the tombstone it rose from stuck
-   * in it, or a cracked glass greenhouse.
+   * in it, a cracked glass greenhouse, or a pair of curling goat horns.
    */
-  hat?: 'tombstone' | 'glassHelmet';
+  hat?: 'tombstone' | 'glassHelmet' | 'goatHorns';
   /**
    * A death animation only this zombie has, played instead of a common one
    * some of the time. Looks only.
    */
-  death?: 'jetpackBlast' | 'shieldSquish' | 'goDownWithShip' | 'overwatered';
+  death?: 'jetpackBlast' | 'shieldSquish' | 'goDownWithShip' | 'overwatered' | 'backToHell';
   /**
    * Coming up out of the graves: takes `time` seconds to climb out (standing
    * still), from a tombstone at least `minPathDistance` from the nearest base
@@ -116,6 +120,18 @@ export interface ZombieDef {
    * `radius` of where it lands is zombified for `duration` seconds.
    */
   goo?: { range: number; radius: number; every: number; first: number; duration: number };
+  /**
+   * Plays a riff every `every` seconds (the first after `first`) at the
+   * nearest plant within `range` (or a base, if there's none), while it walks.
+   * Riffs take turns: a blast of flame that hurts every plant in a cone
+   * `spread` radians either side of the aim, then a bolt of lightning that
+   * jumps on to up to `jumps` more plants, each within `reach` of the last.
+   */
+  riff?: {
+    range: number; every: number; first: number;
+    flame: { damage: number; spread: number };
+    zap: { damage: number; jumps: number; reach: number };
+  };
   /** Attacks hit every plant within this distance (a wide swing). */
   sweep?: number;
   /**
@@ -322,6 +338,63 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     boss: true,
     goo: { range: 9, radius: 2.2, every: 8, first: 3, duration: 7 },
   },
+  // A final boss: Satan himself, the Hellfire Arena's headliner. Big red gut,
+  // goat legs, a spade-tipped tail, and an electric guitar that shoots flames
+  // and lightning. His roadies march beside him and a biker gang roars in.
+  satan: {
+    name: 'Satan',
+    icon: '😈',
+    hp: 4000,
+    speed: 0.75,
+    dps: 60,
+    armor: 0.2,
+    flying: false,
+    radius: 1.1,
+    color: '#ff2a1a',
+    model: 'satan',
+    skin: 'skins/satan.png',
+    scale: 3,
+    weapon: 'guitar',
+    hat: 'goatHorns',
+    death: 'backToHell',
+    boss: true,
+    guards: { zombie: 'roadie', count: 4 },
+    riff: {
+      range: 9, every: 4.5, first: 3,
+      flame: { damage: 70, spread: 0.45 },
+      zap: { damage: 55, jumps: 3, reach: 4.5 },
+    },
+  },
+  // Satan's biker gang: fast, on loud choppers.
+  biker: {
+    name: 'Biker Zombie',
+    icon: '🏍️',
+    hp: 170,
+    speed: 2.1,
+    dps: 25,
+    armor: 0.1,
+    flying: false,
+    radius: 0.5,
+    color: '#ff8a3d',
+    model: 'biker',
+    skin: 'skins/biker.png',
+    mount: 'motorcycle',
+  },
+  // A stage-crew zombie hiding behind a road case: it soaks up shots.
+  roadie: {
+    name: 'Roadie Zombie',
+    icon: '🎚️',
+    hp: 320,
+    speed: 0.95,
+    dps: 30,
+    armor: 0.4,
+    flying: false,
+    radius: 0.5,
+    color: '#9a9aa8',
+    model: 'humanoid',
+    skin: 'skins/roadie.png',
+    weapon: 'roadCase',
+  },
   // A final boss. Named after his creator.
   zomwes: {
     name: 'ZomWes 8000',
@@ -345,7 +418,10 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
   },
 };
 
-/** The final wave's boss is one of these, picked at random each game. */
+/**
+ * The final wave's boss is one of these, picked at random each game (unless
+ * the level has its own: see `LevelDef.bosses`).
+ */
 export const BOSSES: ZombieId[] = ['zomwes', 'captain', 'gardener'];
 
 export const STRUCTURES: Record<StructureId, StructureDef> = {
@@ -397,6 +473,22 @@ export const ABILITIES = {
 } satisfies Record<AbilityId, AbilityDef & Record<string, string | number>>;
 
 /**
+ * The mosh pit (on maps that have one). Ground zombies in it (not bosses or
+ * giants) get a rock shield, and take turns rocking out, barely moving, then
+ * surging forward at super speed, for as long as they're in it.
+ */
+export const MOSH = {
+  /** Fraction of damage the rock shield blocks (on top of any armor). */
+  shield: 0.5,
+  /** Rocking out: speed multiplier, and how long (random between these). */
+  rockSpeed: 0.2,
+  rockTime: [1.2, 2.2] as [number, number],
+  /** Surging: speed multiplier, and how long. */
+  surgeSpeed: 2.6,
+  surgeTime: 0.9,
+};
+
+/**
  * How fast the game runs at "1×" (1 = the original pace). The speed button
  * doubles whatever this is.
  */
@@ -432,6 +524,17 @@ export const SCORE = {
 
 export interface Rect { x: number; z: number; w: number; d: number }
 export interface Circle { x: number; z: number; r: number }
+/** A straight row of seats, from one end to the other (`SEAT_ROW_DEPTH` deep). */
+export interface SeatRow { x1: number; z1: number; x2: number; z2: number }
+/**
+ * An arena floor shaped like a fan: the slice of a circle centered at (x, z),
+ * `radius` across and `halfAngle` radians either side of due east. It opens
+ * out eastward, so its narrow end is in the west.
+ */
+export interface Fan { x: number; z: number; radius: number; halfAngle: number }
+
+/** How deep a row of seats is, front to back (two rows of seats back to back). */
+export const SEAT_ROW_DEPTH = 1.8;
 /** A rock. `look` draws a landmark in its place (same rules: nothing gets through). */
 export interface Rock extends Circle { look?: 'gazebo' }
 
@@ -457,6 +560,22 @@ export interface MapDef {
   craters?: Circle[];
   /** Where the camera starts looking (default: a little west of the middle). */
   view?: { x: number; z: number };
+  /**
+   * An arena: only the fan-shaped floor (and the tunnels) can be walked on or
+   * planted in. Everything else is the stands: nothing gets in.
+   */
+  fan?: Fan;
+  /** Openings through the stands, from the floor out to the map's edge. */
+  tunnels?: Rect[];
+  /** Rows of seats on the floor. Nothing gets through them (except giants). */
+  seats?: SeatRow[];
+  /** The mosh pit (see MOSH). Nothing can be planted in it. */
+  moshPit?: Circle;
+  /**
+   * A raised stage at the fan's narrow end: the floor within `radius` of the
+   * fan's center, `height` up. Looks only: zombies walk up onto it.
+   */
+  stage?: { radius: number; height: number };
 }
 
 /** Level 1: open ground, bases spread out. */
@@ -661,6 +780,77 @@ const JUNGLE_MAP: MapDef = {
   },
 };
 
+/**
+ * Level 5: a rock concert in a sold-out arena. The floor fans out from the
+ * stage (west, where the bases stand) to the back, where zombies pour in
+ * through three tunnels under the stands: one in the middle of the back
+ * wall (east) and one at each back corner (north and south). Rows of seats
+ * stand at odd angles all over the floor, and the mosh pit is right in front
+ * of the stage: rows of seats run from it out to the walls, so the only way
+ * to the stage is through the pit.
+ */
+const CONCERT_FAN: Fan = { x: -70, z: 0, radius: 104, halfAngle: 0.35 };
+const CONCERT_MAP: MapDef = {
+  width: 76,
+  depth: 76,
+  hills: 0,
+  fan: CONCERT_FAN,
+  stage: { radius: 43, height: 1.2 },
+  structures: [
+    { id: 'greenhouse', x: -34, z: 0 },
+    { id: 'powerPlant', x: -32, z: 8 },
+    { id: 'spaceship', x: -32, z: -8 },
+  ],
+  moshPit: { x: -18, z: 0, r: 5.5 },
+  tunnels: [
+    { x: 36, z: 0, w: 6, d: 5 },
+    { x: 22, z: 36, w: 5, d: 6 },
+    { x: 22, z: -36, w: 5, d: 6 },
+  ],
+  seats: [
+    // VIP rows from the pit's stage side out to the walls: the only way to
+    // the stage is right across the mosh pit.
+    { x1: -21, z1: 4.6, x2: -14, z2: 19.5 },
+    { x1: -21, z1: -4.6, x2: -14, z2: -19.5 },
+    // A wedge either side of the pit, angled in toward it.
+    { x1: -9, z1: 7, x2: -3, z2: 14 },
+    { x1: -9, z1: -7, x2: -3, z2: -14 },
+    // A row slanted across the middle, gaps at both ends.
+    { x1: 3, z1: -5, x2: 8, z2: 5 },
+    // A chevron pointing at the stage, north and south.
+    { x1: 3, z1: 18, x2: 9, z2: 13 },
+    { x1: 9, z1: 13, x2: 14, z2: 19 },
+    { x1: 3, z1: -18, x2: 9, z2: -13 },
+    { x1: 9, z1: -13, x2: 14, z2: -19 },
+    // Sideways rows near the back.
+    { x1: 18, z1: 3, x2: 18, z2: 11 },
+    { x1: 18, z1: -3, x2: 18, z2: -11 },
+    // Spokes fanning out by the corner tunnels.
+    { x1: 23, z1: 16, x2: 28, z2: 24 },
+    { x1: 23, z1: -16, x2: 28, z2: -24 },
+    // Up against the side walls.
+    { x1: -6, z1: 20, x2: 0, z2: 23 },
+    { x1: -6, z1: -20, x2: 0, z2: -23 },
+    // A short row stuck out by the middle tunnel, and one off-square beside it.
+    { x1: 26, z1: 6, x2: 29, z2: 1 },
+    { x1: 30, z1: -4, x2: 27, z2: -10 },
+    // Way up the sides, where it's widest.
+    { x1: 11, z1: 25, x2: 17, z2: 28 },
+    { x1: 11, z1: -25, x2: 17, z2: -28 },
+  ],
+  rocks: [],
+  ravines: [],
+  edges: {
+    east: { from: -2, to: 2 },
+    north: { from: 20, to: 24 },
+    south: { from: 20, to: 24 },
+    west: { from: -2, to: 2 },
+  },
+  // Zombies come out of the tunnel mouths.
+  alleys: { east: [0], north: [22], south: [22] },
+  view: { x: -16, z: 0 },
+};
+
 // ---------------------------------------------------------------------------
 //  THEMES: the look of a level. Colors are hex strings.
 // ---------------------------------------------------------------------------
@@ -689,12 +879,13 @@ export interface ThemeDef {
    * the graveyard (neon fence, gazebo, ghosts, slime, haunted houses, moon),
    * or the jungle (giant trees with crashed ships hanging from vines, palms).
    */
-  decor?: 'ruinedCity' | 'graveyard' | 'jungle';
+  decor?: 'ruinedCity' | 'graveyard' | 'jungle' | 'concert';
   /**
    * A painted ground instead of plain colors (asphalt street, sidewalks,
-   * rubble), or a patchy jungle floor (moss, grass and bare earth).
+   * rubble, or an arena floor with a stage), or a patchy jungle floor (moss,
+   * grass and bare earth).
    */
-  groundStyle?: 'cityStreet' | 'jungleFloor';
+  groundStyle?: 'cityStreet' | 'jungleFloor' | 'arenaFloor';
   /** Weather that rolls in partway through some waves. Looks only: the rules don't change. */
   weather?: WeatherDef;
 }
@@ -790,6 +981,26 @@ const JUNGLE_THEME: ThemeDef = {
   weather: { kind: 'thunderstorm', waves: [3, 5], after: 8 },
 };
 
+/** A rock concert at night: smoky purple haze, stage lights, lasers everywhere. */
+const CONCERT_THEME: ThemeDef = {
+  sky: '#0a0414',
+  fog: '#1a0a26',
+  fogDensity: 0.006,
+  ground: '#1b1820',
+  ravine: '#000000',
+  light: '#c9b2ff',
+  lightIntensity: 0.55,
+  bounce: '#2a0a1e',
+  sun: '#ffd9b0',
+  sunIntensity: 0.45,
+  rock: '#333333',
+  rockEdge: '#ff3355',
+  border: '#ff2fd0',
+  glow: 0.75,
+  decor: 'concert',
+  groundStyle: 'arenaFloor',
+};
+
 // ---------------------------------------------------------------------------
 //  WAVES
 //  Each group spawns `count` zombies of `zombie` from `edge`, one every
@@ -854,9 +1065,53 @@ const GRAVEYARD_WAVES: SpawnGroup[][] = WAVES.map((wave, i) => [
   ...GRAVE_RISERS[i],
 ]);
 
+/**
+ * The Hellfire Arena's waves: all through the three tunnels (east: the back
+ * wall's, north and south: the corners). Roadies and bikers join in, and the
+ * boss rolls in with the whole biker gang.
+ */
+const CONCERT_WAVES: SpawnGroup[][] = [
+  [
+    { zombie: 'cyborg', edge: 'east', count: 6, every: 2.5, delay: 0 },
+  ],
+  [
+    { zombie: 'cyborg', edge: 'east', count: 6, every: 2, delay: 0 },
+    { zombie: 'cyborg', edge: 'north', count: 3, every: 3, delay: 5 },
+    { zombie: 'cyborg', edge: 'south', count: 3, every: 3, delay: 8 },
+  ],
+  [
+    { zombie: 'cyborg', edge: 'east', count: 8, every: 1.8, delay: 0 },
+    { zombie: 'roadie', edge: 'north', count: 3, every: 3, delay: 4 },
+    { zombie: 'biker', edge: 'south', count: 4, every: 1.5, delay: 9 },
+    { zombie: 'jetpack', edge: 'north', count: 2, every: 3, delay: 12 },
+  ],
+  [
+    { zombie: 'roadie', edge: 'east', count: 5, every: 2.5, delay: 0 },
+    { zombie: 'cyborg', edge: 'north', count: 8, every: 1.5, delay: 3 },
+    { zombie: 'cyborg', edge: 'south', count: 8, every: 1.5, delay: 3 },
+    { zombie: 'biker', edge: 'east', count: 5, every: 1, delay: 12 },
+    { zombie: 'jetpack', edge: 'south', count: 3, every: 2, delay: 14 },
+  ],
+  // Final wave! The boss and his biker gang, out of every tunnel at once.
+  [
+    { zombie: 'cyborg', edge: 'east', count: 14, every: 1, delay: 0 },
+    { zombie: 'roadie', edge: 'north', count: 5, every: 2, delay: 4 },
+    { zombie: 'roadie', edge: 'south', count: 5, every: 2, delay: 4 },
+    { zombie: 'jetpack', edge: 'north', count: 4, every: 1.5, delay: 10 },
+    { zombie: 'satan', edge: 'east', count: 1, every: 1, delay: 18 },
+    { zombie: 'biker', edge: 'north', count: 5, every: 0.6, delay: 18 },
+    { zombie: 'biker', edge: 'south', count: 5, every: 0.6, delay: 18 },
+    { zombie: 'biker', edge: 'east', count: 4, every: 0.6, delay: 20 },
+    { zombie: 'cyborg', edge: 'east', count: 12, every: 0.8, delay: 24 },
+  ],
+];
+
 // ---------------------------------------------------------------------------
 //  LEVELS
 // ---------------------------------------------------------------------------
+
+/** What an ability is called on a level, its card, and its sound. The rules don't change. */
+export interface AbilityLook { name: string; icon: string; description: string; sound?: SoundId }
 
 export interface LevelDef {
   id: string;
@@ -866,6 +1121,16 @@ export interface LevelDef {
   map: MapDef;
   theme: ThemeDef;
   waves: SpawnGroup[][];
+  /** This level's own bosses (one is picked each game) instead of BOSSES. */
+  bosses?: ZombieId[];
+  /** Abilities under another name on this level (they work the same). */
+  abilities?: Partial<Record<AbilityId, AbilityLook>>;
+}
+
+/** An ability's name, icon and description as this level calls it. */
+export function abilityLook(level: LevelDef, id: AbilityId): AbilityLook {
+  const { name, icon, description } = ABILITIES[id];
+  return level.abilities?.[id] ?? { name, icon, description };
 }
 
 export const LEVELS: LevelDef[] = [
@@ -905,6 +1170,20 @@ export const LEVELS: LevelDef[] = [
     theme: JUNGLE_THEME,
     waves: WAVES,
   },
+  {
+    id: 'concert',
+    name: 'Hellfire Arena',
+    icon: '🎸',
+    description: 'A sold-out rock concert. The stage is yours; the mosh pit is theirs.',
+    map: CONCERT_MAP,
+    theme: CONCERT_THEME,
+    waves: CONCERT_WAVES,
+    bosses: ['satan'],
+    abilities: {
+      orbitalStrike: { name: 'Guitar Solo Blast', icon: '🎸', description: 'Tap a spot to blast it with a face-melting guitar solo.', sound: 'guitarSolo' },
+      hyperSun: { name: 'Encore', icon: '🤘', description: 'The crowd screams for more: all plants attack twice as fast for a few seconds.', sound: 'encore' },
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -918,6 +1197,7 @@ export type SoundId =
   | 'laser' | 'cryo' | 'place' | 'sell' | 'chomp' | 'zombieDie' | 'plantDie'
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
   | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie'
-  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk' | 'goo' | 'cure';
+  | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk' | 'goo' | 'cure'
+  | 'flame' | 'zap' | 'guitarSolo' | 'encore' | 'engine';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};

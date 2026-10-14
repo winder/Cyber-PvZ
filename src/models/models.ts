@@ -16,8 +16,9 @@ export type FaceName = 'top' | 'bottom' | 'right' | 'front' | 'left' | 'back';
 export type PartRole =
   | 'head' | 'body' | 'armR' | 'armL' | 'legR' | 'legL' | 'jetpack'
   | 'footR' | 'footL' | 'driverBody' | 'driverHead'
-  | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL';
-export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener';
+  | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL'
+  | 'gut' | 'tail' | 'tailTip';
+export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener' | 'satan' | 'biker';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -47,8 +48,11 @@ export interface ModelDef {
   skinUnits?: number;
   /** How far the legs swing when walking (radians). */
   walkSwing?: number;
-  /** How it moves: an ordinary walk, or leaping bounds with a slice on landing. */
-  gait?: 'walk' | 'leapSlice';
+  /**
+   * How it moves: an ordinary walk, leaping bounds with a slice on landing,
+   * or riding (legs held still on the footpegs).
+   */
+  gait?: 'walk' | 'leapSlice' | 'ride';
 }
 
 /** Default skin layout size in units. */
@@ -117,6 +121,41 @@ export const MODELS: Record<ModelId, ModelDef> = {
       { role: 'legR', label: 'Right leg', size: [5, 11, 5], uv: [0, 38], pivot: [2.7, 11, 0], offset: [0, -5.5, 0] },
       { role: 'legL', label: 'Left leg', size: [5, 11, 5], uv: [20, 38], pivot: [-2.7, 11, 0], offset: [0, -5.5, 0] },
     ],
+  },
+  // Satan: a big red gut on goat legs (thighs forward, shins sweeping back
+  // to the hooves), a long thin tail, and his arms held to play the guitar
+  // slung across his gut. The horns and the spade on the tail are built in
+  // code. Packed into a 64-unit page.
+  satan: {
+    label: 'Satan',
+    walkSwing: 0.4,
+    parts: [
+      { role: 'body', label: 'Body', size: [10, 10, 6], uv: [32, 0], pivot: [0, 25, 0], offset: [0, -5, 0] },
+      { role: 'head', label: 'Head', size: [8, 8, 8], uv: [0, 0], pivot: [0, 25, 0], offset: [0, 4, 0] },
+      { role: 'gut', label: 'Gut', size: [9, 8, 5], uv: [32, 16], pivot: [0, 19, 3], parent: 'body', offset: [0, 0, 1.5] },
+      { role: 'armR', label: 'Right arm', size: [4, 12, 4], uv: [0, 16], pivot: [7, 24, 0], offset: [0, -4.5, 0], rest: [-0.75, 0.2, 0.25] },
+      { role: 'armL', label: 'Left arm', size: [4, 12, 4], uv: [16, 16], pivot: [-7, 24, 0], offset: [0, -4.5, 0], rest: [-1.25, -0.5, -0.35] },
+      // Goat legs: the thigh juts forward, the shin sweeps back down to the hoof.
+      { role: 'legR', label: 'Right thigh', size: [5, 7, 5], uv: [0, 32], pivot: [2.6, 15, 0], offset: [0, -3, 0], rest: [-0.55, 0, 0] },
+      { role: 'legL', label: 'Left thigh', size: [5, 7, 5], uv: [20, 32], pivot: [-2.6, 15, 0], offset: [0, -3, 0], rest: [-0.55, 0, 0] },
+      { role: 'footR', label: 'Right shin and hoof', size: [3, 11, 3], uv: [40, 32], pivot: [2.6, 9, 0], parent: 'legR', offset: [0, -5, 0], rest: [1.0, 0, 0] },
+      { role: 'footL', label: 'Left shin and hoof', size: [3, 11, 3], uv: [52, 32], pivot: [-2.6, 9, 0], parent: 'legL', offset: [0, -5, 0], rest: [1.0, 0, 0] },
+      // A long thin tail: out the back and down, then curling up.
+      { role: 'tail', label: 'Tail', size: [1, 12, 1], uv: [0, 48], pivot: [0, 16, -2.5], offset: [0, -6, 0], rest: [1.6, 0, 0] },
+      { role: 'tailTip', label: 'Tail tip', size: [1, 8, 1], uv: [4, 48], pivot: [0, 4, -2.5], parent: 'tail', offset: [0, -4, 0], rest: [-1.9, 0, 0] },
+    ],
+  },
+  // A Biker Zombie, sat on its chopper: legs out on the footpegs, arms up on
+  // the handlebars. Same skin layout as the humanoid; the bike is built in code.
+  biker: {
+    label: 'Biker',
+    gait: 'ride',
+    parts: HUMANOID_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-1.25, 0, 0.12] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-1.25, 0, -0.12] as [number, number, number] }
+      : p.role === 'legR' ? { ...p, rest: [-1.35, 0, 0.12] as [number, number, number] }
+      : p.role === 'legL' ? { ...p, rest: [-1.35, 0, -0.12] as [number, number, number] }
+      : p),
   },
   // ZomWes 8000's walker: a hulking robot on bell-bottom legs, with a little
   // driver on its head pulling levers. From Wesley's drawing.

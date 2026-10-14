@@ -1,5 +1,5 @@
 import {
-  ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type AbilityId, type PlantId, type SpawnFrom,
+  ABILITIES, PLANTS, STRUCTURES, ZOMBIES, abilityLook, type AbilityId, type PlantId, type SpawnFrom,
 } from '../data/config';
 import type { Game } from '../sim/game';
 
@@ -52,7 +52,7 @@ export class Hud {
 
     const abilities = $('abilities');
     for (const id of Object.keys(ABILITIES) as AbilityId[]) {
-      const def = ABILITIES[id];
+      const def = { ...abilityLook(game.level, id), cost: ABILITIES[id].cost };
       const btn = document.createElement('button');
       btn.className = 'card-btn';
       btn.title = def.description;

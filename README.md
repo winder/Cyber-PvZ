@@ -21,8 +21,10 @@ Each level button on the title screen shows your high score and how many
 times you've played it (remembered in that browser only).
 
 Choose a level on the title screen, or link straight to one:
-`?level=1` (Neon Grid) or `?level=2` (Rust Corridor). It combines with debug
-mode, e.g. `?level=2&debug`.
+`?level=1` (Neon Grid) or `?level=2` (Rust Corridor), up to `?level=5`
+(Hellfire Arena, a rock concert). It combines with debug mode, e.g.
+`?level=2&debug`. Pick the final boss with `?boss=zomwes`, `captain`,
+`gardener` or `satan`.
 
 ## Controls
 
@@ -48,6 +50,9 @@ or `http://localhost:5173/?debug` locally). A 🐞 panel appears with:
 - **∞ Sun**: keeps sun topped up at 99,999. Tap to turn it off.
 
 ## Change the game
+
+Default skins for Satan, the Biker and the Roadie are painted by
+`npm run skins` (then commit the PNGs).
 
 Everything you'd want to tweak is in **`src/data/config.ts`**: plant costs,
 health, damage, zombie speed, the waves, the levels (maps and color themes),

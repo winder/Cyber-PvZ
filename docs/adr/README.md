@@ -15,3 +15,4 @@ Decisions that were surprising, hard to reverse, or real trade-offs. Terms are d
 - [0011. Art is generated in code, with drop-in hooks for Wesley's art](0011-procedural-art-in-code.md)
 - [0012. Spectacle is render-side; cinematics hold the sim like pause](0012-spectacle-render-side.md)
 - [0013. A zombified plant is a timer on the plant, not a second team](0013-zombified-plants-are-a-timer.md)
+- [0014. The mosh pit is a zone rule; arena walls and seats are obstacles](0014-arena-zones-and-level-overrides.md)

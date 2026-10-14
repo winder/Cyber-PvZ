@@ -3,6 +3,7 @@ import {
   TransformNode, Vector3, VertexBuffer, VertexData, type GlowLayer,
 } from '@babylonjs/core';
 import type { MapDef } from '../data/config';
+import type { SimEvent } from '../sim/game';
 import type { Terrain } from './terrain';
 
 // Scenery for the ruined-city look (Rust Corridor): gutted brick buildings
@@ -13,6 +14,10 @@ import type { Terrain } from './terrain';
 export interface Decor {
   /** Animate lamps, tumbleweeds and the camera cutaway. `bossActive` makes the lamps go wild. */
   update(dt: number, bossActive: boolean): void;
+  /** React to what happened in the game (the concert's show does). */
+  handle?(events: SimEvent[]): void;
+  /** Draws its own look for the strike ability (aim and blast), in place of the usual one. */
+  replacesStrike?: boolean;
   /** Bring down the standing building nearest (x, z), if one is within `reach`. True if one fell. */
   crumble(x: number, z: number, reach: number): boolean;
   /** Put every street lamp out (or let them come back on). */

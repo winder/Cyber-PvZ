@@ -50,6 +50,38 @@ export class Minimap {
 
     ctx.clearRect(0, 0, w, h);
 
+    // An arena: the stands all round, the floor fanning out, its tunnels,
+    // rows of seats, and the mosh pit.
+    const fan = map.fan;
+    if (fan) {
+      ctx.fillStyle = 'rgba(40, 10, 40, 0.75)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(70, 60, 90, 0.5)';
+      ctx.beginPath();
+      ctx.moveTo(X(fan.x), Z(fan.z));
+      ctx.arc(X(fan.x), Z(fan.z), fan.radius * s, -fan.halfAngle, fan.halfAngle);
+      ctx.closePath();
+      ctx.fill();
+      for (const t of map.tunnels ?? []) ctx.fillRect(X(t.x - t.w / 2), Z(t.z + t.d / 2), t.w * s, t.d * s);
+      ctx.strokeStyle = 'rgba(255, 60, 90, 0.85)';
+      ctx.lineWidth = 1.8 * s;
+      ctx.lineCap = 'round';
+      for (const r of map.seats ?? []) {
+        ctx.beginPath();
+        ctx.moveTo(X(r.x1), Z(r.z1));
+        ctx.lineTo(X(r.x2), Z(r.z2));
+        ctx.stroke();
+      }
+      const pit = map.moshPit;
+      if (pit) {
+        ctx.strokeStyle = 'rgba(255, 210, 31, 0.9)';
+        ctx.lineWidth = dpr;
+        ctx.beginPath();
+        ctx.arc(X(pit.x), Z(pit.z), pit.r * s, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
     ctx.fillStyle = 'rgba(120, 100, 255, 0.55)';
     for (const [i, r] of map.rocks.entries()) {
       if (this.game.risen.has(i)) continue;

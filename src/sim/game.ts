@@ -1,7 +1,8 @@
 import {
-  ABILITIES, BOSSES, ECONOMY, LEVELS, PLANTS, SCORE, STRUCTURES, ZOMBIES,
+  ABILITIES, BOSSES, ECONOMY, LEVELS, MOSH, PLANTS, SCORE, STRUCTURES, ZOMBIES,
   type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
 } from '../data/config';
+import { inCircle, inSeatRow, onFloor } from './arena';
 import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
 import { boundingRadius, distanceToPlant, footprintPoints, isRotatable, thicknessAcross } from './shapes';
 
@@ -63,6 +64,13 @@ export interface Zombie {
   reload: number;
   /** Summoners: seconds until it calls up more zombies. */
   summonIn: number;
+  /** Riff players: how many riffs so far (they take turns: flame, lightning). */
+  riffs: number;
+  /** In the mosh pit, behind a rock shield. */
+  moshing: boolean;
+  /** Moshing: seconds left rocking out (barely moving), then surging (super speed). */
+  rocking: number;
+  surging: number;
 }
 
 export interface Structure {
@@ -108,6 +116,10 @@ export type SimEvent =
   | { t: 'gooSprayed'; id: number; x: number; z: number; radius: number; ids: number[] }
   /** Plants back to normal: burned clean by a strike, worn off, or their boss fell. */
   | { t: 'plantsCured'; ids: number[]; by: 'strike' | 'time' | 'bossDown' }
+  /** `id`: who played it. Flame fills a cone from (x, z) toward (toX, toZ), `range` long, `spread` radians either side. */
+  | { t: 'flameRiff'; id: number; x: number; z: number; toX: number; toZ: number; range: number; spread: number }
+  /** `id`: who played it. Lightning from the player through each point in turn (plants, or a base). */
+  | { t: 'zapRiff'; id: number; chain: { x: number; z: number }[] }
   | { t: 'hyperSun' }
   | { t: 'waveStart'; wave: number }
   | { t: 'waveCleared'; wave: number; bonus: number }
@@ -173,7 +185,8 @@ export class Game {
   /** `boss`: pick the final wave's boss instead of leaving it to chance. */
   constructor(seed = 1, readonly level: LevelDef = LEVELS[0], opts: { boss?: ZombieId } = {}) {
     // Each boss stands in for any boss in the level's waves.
-    this.boss = opts.boss ?? BOSSES[Math.floor(mulberry32(seed ^ 0x5eed)() * BOSSES.length)];
+    const bosses = level.bosses ?? BOSSES;
+    this.boss = opts.boss ?? bosses[Math.floor(mulberry32(seed ^ 0x5eed)() * bosses.length)];
     this.map = level.map;
     this.waves = level.waves.map((wave) => wave.map((g) => (ZOMBIES[g.zombie].boss ? { ...g, zombie: this.boss } : g)));
     this.totalWaves = level.waves.length;
@@ -201,8 +214,12 @@ export class Game {
   private fits(type: PlantId, x: number, z: number, angle: number, ignore?: Plant): { ok: true } | { ok: false; reason: string } {
     const pts = footprintPoints(type, x, z, angle);
     const hw = this.map.width / 2, hd = this.map.depth / 2;
-    if (pts.some(([px, pz]) => Math.abs(px) > hw || Math.abs(pz) > hd)) {
+    if (pts.some(([px, pz]) => Math.abs(px) > hw || Math.abs(pz) > hd || !onFloor(this.map, px, pz))) {
       return { ok: false, reason: 'Too close to the edge.' };
+    }
+    const pit = this.map.moshPit;
+    if (pit && pts.some(([px, pz]) => inCircle(pit, px, pz))) {
+      return { ok: false, reason: 'No plants in the mosh pit!' };
     }
     if (pts.some(([px, pz]) => this.nav.blocked[this.nav.cellOf(px, pz)])) {
       return { ok: false, reason: 'Something is in the way.' };
@@ -430,7 +447,8 @@ export class Game {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
       leader: null, slot: 0, detour: 0, grave: -1, rising: 0,
-      reload: ZOMBIES[type].goo?.first ?? 0, summonIn: ZOMBIES[type].summon?.first ?? 0,
+      reload: ZOMBIES[type].goo?.first ?? ZOMBIES[type].riff?.first ?? 0, summonIn: ZOMBIES[type].summon?.first ?? 0,
+      riffs: 0, moshing: false, rocking: 0, surging: 0,
     };
     this.zombies.push(zombie);
     return zombie;
@@ -467,11 +485,14 @@ export class Game {
     return zombie;
   }
 
-  /** Block the cells under standing rocks and ravines. */
+  /** Block the cells under standing rocks and ravines (and an arena's stands and seats). */
   private markObstacles(): void {
     this.nav.blocked.fill(0);
     for (const [i, r] of this.map.rocks.entries()) if (!this.risen.has(i)) this.nav.addRock(r);
     for (const c of this.map.ravines) this.nav.addRavine(c);
+    if (this.map.fan) this.nav.blockWhere((x, z) => !onFloor(this.map, x, z));
+    const seats = this.map.seats ?? [];
+    if (seats.length) this.nav.blockWhere((x, z) => seats.some((s) => inSeatRow(s, x, z)));
   }
 
   /** Where bodyguard number `slot` stands: beside the leader's left, right, and behind. */
@@ -610,7 +631,41 @@ export class Game {
   }
 
   private damageZombie(z: Zombie, amount: number): void {
-    z.hp -= amount * (1 - ZOMBIES[z.type].armor);
+    z.hp -= amount * (1 - ZOMBIES[z.type].armor) * (z.moshing ? 1 - MOSH.shield : 1);
+  }
+
+  /**
+   * In the mosh pit: rock out (barely moving), then surge (super speed), over
+   * and over, behind a rock shield. Returns the speed multiplier for now.
+   */
+  private mosh(zb: Zombie): number {
+    const def = ZOMBIES[zb.type];
+    const pit = this.map.moshPit;
+    const inPit = !!pit && !def.boss && !def.giant && !def.flying && inCircle(pit, zb.x, zb.z);
+    if (!inPit) {
+      zb.moshing = false;
+      zb.rocking = zb.surging = 0;
+      return 1;
+    }
+    const rockFor = () => MOSH.rockTime[0] + this.rand() * (MOSH.rockTime[1] - MOSH.rockTime[0]);
+    if (!zb.moshing) {
+      zb.moshing = true;
+      zb.rocking = rockFor();
+    }
+    if (zb.rocking > 0) {
+      zb.rocking -= DT;
+      if (zb.rocking <= 0) {
+        zb.rocking = 0;
+        zb.surging = MOSH.surgeTime;
+      }
+    } else {
+      zb.surging -= DT;
+      if (zb.surging <= 0) {
+        zb.surging = 0;
+        zb.rocking = rockFor();
+      }
+    }
+    return zb.rocking > 0 ? MOSH.rockSpeed : MOSH.surgeSpeed;
   }
 
   private updateZombies(): void {
@@ -618,7 +673,7 @@ export class Game {
       if (zb.hp <= 0) continue;
       const def = ZOMBIES[zb.type];
       if (zb.slowTimer > 0) zb.slowTimer -= DT;
-      const speed = def.speed * (zb.slowTimer > 0 ? zb.slowFactor : 1);
+      const speed = def.speed * (zb.slowTimer > 0 ? zb.slowFactor : 1) * this.mosh(zb);
       zb.attacking = null;
 
       if (zb.rising > 0) {
@@ -628,6 +683,7 @@ export class Game {
       if (def.rockets) this.fireRocket(zb);
       if (def.summon) this.summonCrew(zb);
       if (def.goo) this.sprayGoo(zb);
+      if (def.riff) this.playRiff(zb);
 
       if (def.giant) {
         this.updateGiant(zb, speed);
@@ -707,6 +763,83 @@ export class Game {
     const flight = Math.max(0.3, Math.hypot(target.x - zb.x, target.z - zb.z) / r.speed);
     this.rockets.push({ x: target.x, z: target.z, timer: flight, damage: r.damage, radius: r.radius });
     this.events.push({ t: 'rocketFired', id: zb.id, fromX: zb.x, fromZ: zb.z, toX: target.x, toZ: target.z, flight });
+  }
+
+  /**
+   * Riff players aim at the nearest plant in range (or a base, if there's
+   * none), and take turns: a cone of flame, then a bolt of lightning that
+   * jumps from plant to plant.
+   */
+  private playRiff(zb: Zombie): void {
+    const r = ZOMBIES[zb.type].riff!;
+    zb.reload -= DT;
+    if (zb.reload > 0) return;
+    let plant: Plant | undefined;
+    let best = r.range;
+    for (const p of this.plants) {
+      if (p.hp <= 0) continue;
+      const d = distanceToPlant(p, zb.x, zb.z);
+      if (d <= best) {
+        best = d;
+        plant = p;
+      }
+    }
+    let base: Structure | undefined;
+    if (!plant) {
+      const s = this.nearestStructure(zb.x, zb.z);
+      if (s && Math.hypot(s.x - zb.x, s.z - zb.z) - STRUCTURES[s.type].radius <= r.range) base = s;
+    }
+    const target = plant ?? base;
+    if (!target) return;
+    zb.reload = r.every;
+    const flame = zb.riffs++ % 2 === 0;
+    const aim = Math.atan2(target.z - zb.z, target.x - zb.x);
+    zb.facing = aim;
+    if (flame) {
+      const { damage, spread } = r.flame;
+      // Everything in the cone (bases too, if the flame reaches them).
+      const inCone = (x: number, z: number, d: number) => {
+        const off = Math.abs(((Math.atan2(z - zb.z, x - zb.x) - aim + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        return d <= r.range && off <= spread;
+      };
+      for (const p of this.plants) if (inCone(p.x, p.z, distanceToPlant(p, zb.x, zb.z))) p.hp -= damage;
+      for (const s of this.structures) {
+        if (s.alive && inCone(s.x, s.z, Math.hypot(s.x - zb.x, s.z - zb.z) - STRUCTURES[s.type].radius)) this.damageStructure(s, damage);
+      }
+      this.events.push({
+        t: 'flameRiff', id: zb.id, x: zb.x, z: zb.z,
+        toX: zb.x + Math.cos(aim) * r.range, toZ: zb.z + Math.sin(aim) * r.range, range: r.range, spread,
+      });
+      return;
+    }
+    const { damage, jumps, reach } = r.zap;
+    const chain = [{ x: target.x, z: target.z }];
+    if (base) {
+      this.damageStructure(base, damage);
+    } else {
+      // Jump on from plant to plant, never the same one twice.
+      const hit = new Set<Plant>([plant!]);
+      plant!.hp -= damage;
+      let last = plant!;
+      for (let k = 0; k < jumps; k++) {
+        let next: Plant | undefined;
+        let nd = reach;
+        for (const p of this.plants) {
+          if (hit.has(p) || p.hp <= 0) continue;
+          const d = distanceToPlant(p, last.x, last.z);
+          if (d <= nd) {
+            nd = d;
+            next = p;
+          }
+        }
+        if (!next) break;
+        hit.add(next);
+        next.hp -= damage;
+        chain.push({ x: next.x, z: next.z });
+        last = next;
+      }
+    }
+    this.events.push({ t: 'zapRiff', id: zb.id, chain });
   }
 
   /** Rockets land: every plant in the blast is hurt, and any base it reaches. */

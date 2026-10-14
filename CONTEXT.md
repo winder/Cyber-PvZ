@@ -80,6 +80,33 @@ ploughed, each with its wreck at the west end. Rules as any ravine.
 flyers and **Giants**. Its visible hole always stays inside its rectangular
 blocked area. Replaced the earlier "cliffs". *Avoid:* "cliff".
 
+**Arena** — The Hellfire Arena's floor: a **Fan** (a slice of a circle,
+narrow at the stage end in the west, opening out east). Only the fan and its
+**Tunnels** can be walked on or planted in; everything else is the
+**Stands** (packed with fans, looks only). Code: `MapDef.fan`,
+`MapDef.tunnels`, `onFloor` in `src/sim/arena.ts`.
+
+**Tunnel** — An opening through the stands from the floor out to the map's
+edge, where an arena's zombies come in (Gates A, B and C). Code:
+`MapDef.tunnels`, with the edge's **Alleys** at the tunnel mouths.
+
+**Stage** — The raised floor at the arena's narrow end, where the bases
+stand. Looks only: zombies walk up onto it. Code: `MapDef.stage`.
+
+**Seat row** — A row of seats bolted to the arena floor, at an odd angle:
+a thick line nothing gets through (except giants and flyers), full of fans
+rocking out (looks only). Two run from the **Mosh pit** out to the walls,
+so the only way to the stage is across the pit. Code: `MapDef.seats`,
+`SEAT_ROW_DEPTH`. *Avoid:* "bleachers" (that's the **Stands**).
+
+**Mosh pit** — A circle of floor in front of the stage. Ground zombies in it
+(not bosses or flyers) are **Moshing**: they get a **Rock shield** (blocks
+half of all damage) and take turns **rocking out** (barely moving, doing one
+of seven moves: horns, windmill, air guitar, drum solo, headbang, pogo,
+crowd-surf) and **surging** (super speed). Nothing can be planted in it.
+Code: `MapDef.moshPit`, `MOSH`, `Zombie.moshing/rocking/surging`; the moves
+are looks only (`src/render/dance.ts`).
+
 **Edge** — A side of the map zombies enter from (north, south, east, west),
 with a spawn range along it. **Alleys** narrow an edge to a few spawn points
 (Rust Corridor).
@@ -141,6 +168,20 @@ ago. Configurable to trigger on its own health instead (`wanderOn`).
 **sweep** (hit every plant in reach). If the boss falls they carry on alone.
 Code: `Zombie.leader`, `Zombie.slot`, `ZombieDef.guards`, `ZombieDef.sweep`.
 
+**Satan** — The Hellfire Arena's boss (its only one: `LevelDef.bosses`).
+Red, big gut, goat legs, a spade-tipped tail and goat horns. He brings four
+**Roadie Zombies** as bodyguards, and a **Biker Zombie** gang rides in with
+him. He plays **Riffs** on his guitar. His own death: **Back to Hell**.
+
+**Riff** — Satan's attack, every few seconds, at the nearest plant (or a
+base): by turns a cone of **flame** that burns every plant in it, then a
+bolt of **lightning** that jumps from plant to plant. Code: `ZombieDef.riff`,
+events `flameRiff` / `zapRiff`.
+
+**Biker Zombie** — Fast, on a chopper (the bike is looks only). In the mosh
+pit it pops wheelies. **Roadie Zombie** — Slow and armored, carrying a road
+case in front like a shield.
+
 **Tombstone Zombie** — A Cyber Cemetery zombie that **rises** out of a
 tombstone instead of walking in: the rock is gone for good (the way through
 opens up), and it climbs out wearing a clump of grass with that same
@@ -160,6 +201,11 @@ rose. Looks only.
 **Ability** — A battle-phase power that costs sun, has a cooldown and needs
 the Spaceship: **Orbital Laser Strike** (tap a spot) and **Hyper Sun** (all
 plants attack twice as fast for a few seconds).
+
+**Ability look** — What an ability is called on a level, with its icon and
+sound; the rules don't change. On the Hellfire Arena the Orbital Laser
+Strike is the **Guitar Solo Blast** and Hyper Sun is the **Encore**. Code:
+`LevelDef.abilities`, `abilityLook`.
 
 ## Pathfinding (code)
 

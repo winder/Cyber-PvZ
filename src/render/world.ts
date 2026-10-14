@@ -3,6 +3,9 @@ import {
   Scene, StandardMaterial, Vector3, VertexBuffer, VertexData,
 } from '@babylonjs/core';
 import { type EdgeId, type LevelDef } from '../data/config';
+import { insideRect } from '../sim/arena';
+import { arenaTexture } from './arenaFloor';
+import { createConcert } from './concert';
 import { buildCarWreck, createRuinedCity, type Decor } from './decor';
 import { buildTombstones, createGraveyard, type Tombstones } from './graveyard';
 import { createJungle } from './jungle';
@@ -73,8 +76,8 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   }, scene);
   const positions = ground.getVerticesData(VertexBuffer.PositionKind)!;
   const colors: number[] = [];
-  // A painted street is lit as-is (white), and still darkens down in the ravines.
-  const painted = theme.groundStyle === 'cityStreet';
+  // A painted ground is lit as-is (white), and still darkens down in the ravines.
+  const painted = theme.groundStyle === 'cityStreet' || theme.groundStyle === 'arenaFloor';
   const top = painted ? Color3.White() : hex(theme.ground), deep = hex(theme.ravine);
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], z = positions[i + 2];
@@ -98,7 +101,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   earth.specularColor = new Color3(0.04, 0.04, 0.05);
   earth.emissiveColor = painted ? new Color3(0.05, 0.035, 0.025) : top.scale(0.12);
   if (painted) {
-    earth.diffuseTexture = streetTexture(scene, map);
+    earth.diffuseTexture = theme.groundStyle === 'arenaFloor' ? arenaTexture(scene, map) : streetTexture(scene, map);
     // Texture covers the whole map: u runs west→east, v south→north.
     const uv = ground.getVerticesData(VertexBuffer.UVKind)!;
     for (let i = 0, v = 0; i < positions.length; i += 3, v += 2) {
@@ -122,13 +125,13 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     return pts;
   };
 
-  // Glowing border around the playable area.
-  const border = MeshBuilder.CreateLines('border', {
-    points: [
-      ...onGround(-hw, -hd, hw, -hd, 0.03), ...onGround(hw, -hd, hw, hd, 0.03),
-      ...onGround(hw, hd, -hw, hd, 0.03), ...onGround(-hw, hd, -hw, -hd, 0.03),
-    ],
-  }, scene);
+  // Glowing border around the playable area (an arena's runs round its floor).
+  const fan = map.fan;
+  const outline = fan ? fanOutline(level, onGround) : [
+    ...onGround(-hw, -hd, hw, -hd, 0.03), ...onGround(hw, -hd, hw, hd, 0.03),
+    ...onGround(hw, hd, -hw, hd, 0.03), ...onGround(-hw, hd, -hw, -hd, 0.03),
+  ];
+  const border = MeshBuilder.CreateLines('border', { points: outline }, scene);
   border.color = hex(theme.border);
 
   // Tombstones are drawn all together (thin instances); landmarks like the
@@ -164,7 +167,24 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   for (const edge of Object.keys(map.edges) as EdgeId[]) {
     const { from, to } = map.edges[edge];
     const inset = 0.4;
-    const path =
+    // In an arena, zombies come out of a tunnel: ring its mouth instead.
+    const tunnel = fan && (map.tunnels ?? []).find((t) => {
+      const mid = (from + to) / 2;
+      const x = edge === 'east' ? hw - 0.5 : edge === 'west' ? -hw + 0.5 : mid;
+      const z = edge === 'north' ? hd - 0.5 : edge === 'south' ? -hd + 0.5 : mid;
+      return insideRect(t, x, z);
+    });
+    if (fan && !tunnel) {
+      edgeMarkers[edge] = new Mesh(`edge-${edge}`, scene);
+      continue;
+    }
+    const path = tunnel ? [
+      ...onGround(tunnel.x - tunnel.w / 2, tunnel.z - tunnel.d / 2, tunnel.x + tunnel.w / 2, tunnel.z - tunnel.d / 2, 0.15),
+      ...onGround(tunnel.x + tunnel.w / 2, tunnel.z - tunnel.d / 2, tunnel.x + tunnel.w / 2, tunnel.z + tunnel.d / 2, 0.15),
+      ...onGround(tunnel.x + tunnel.w / 2, tunnel.z + tunnel.d / 2, tunnel.x - tunnel.w / 2, tunnel.z + tunnel.d / 2, 0.15),
+      ...onGround(tunnel.x - tunnel.w / 2, tunnel.z + tunnel.d / 2, tunnel.x - tunnel.w / 2, tunnel.z - tunnel.d / 2, 0.15),
+    ].map((p) => new Vector3(Math.max(-hw + inset, Math.min(hw - inset, p.x)), p.y, Math.max(-hd + inset, Math.min(hd - inset, p.z))))
+    :
       edge === 'east' ? onGround(hw - inset, from, hw - inset, to, 0.15)
       : edge === 'west' ? onGround(-hw + inset, from, -hw + inset, to, 0.15)
       : edge === 'north' ? onGround(from, hd - inset, to, hd - inset, 0.15)
@@ -179,6 +199,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground))
     : theme.decor === 'graveyard' ? createGraveyard(scene, map, terrain, glow, hex(theme.ground), hex(theme.fog), tombstones)
     : theme.decor === 'jungle' ? createJungle(scene, map, terrain, hex(theme.ground))
+    : theme.decor === 'concert' ? createConcert(scene, map, terrain, glow, mats)
     : undefined;
 
   const setLighting = (scale: number, flash: number) => {
@@ -188,4 +209,25 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   };
 
   return { scene, mats, ground, glow, edgeMarkers, terrain, decor, tombstones, setLighting };
+}
+
+/**
+ * Round the edge of an arena's floor: from the map's west edge up one side
+ * of the fan, round the back, and down the other side.
+ */
+function fanOutline(level: LevelDef, onGround: (x0: number, z0: number, x1: number, z1: number, lift: number) => Vector3[]): Vector3[] {
+  const f = level.map.fan!;
+  const hw = level.map.width / 2;
+  const point = (r: number, a: number) => [f.x + Math.cos(a) * r, f.z + Math.sin(a) * r] as const;
+  // Where each side meets the map's west edge.
+  const r0 = (-hw - f.x) / Math.cos(f.halfAngle);
+  const [ax, az] = point(r0, f.halfAngle), [bx, bz] = point(f.radius, f.halfAngle);
+  const pts = [...onGround(ax, az, bx, bz, 0.05)];
+  for (let a = f.halfAngle; a >= -f.halfAngle; a -= 0.01) {
+    const [x, z] = point(f.radius, a);
+    pts.push(...onGround(x, z, x, z, 0.05).slice(0, 1));
+  }
+  const [cx, cz] = point(f.radius, -f.halfAngle), [dx, dz] = point(r0, -f.halfAngle);
+  pts.push(...onGround(cx, cz, dx, dz, 0.05));
+  return pts;
 }

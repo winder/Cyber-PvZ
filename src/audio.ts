@@ -61,6 +61,15 @@ function whoosh(dur: number, vol: number, low: number, high: number): Synth {
   };
 }
 
+/** A power chord: root and fifth on two detuned saws, an octave of crunch on top. */
+function chord(root: number, dur: number, vol: number): Synth {
+  return seq(
+    [0, tone('sawtooth', root, root * 0.995, dur, vol)],
+    [0, tone('sawtooth', root * 1.5, root * 1.49, dur, vol * 0.8)],
+    [0, tone('square', root * 2, root * 1.99, dur, vol * 0.4)],
+  );
+}
+
 function seq(...parts: [number, Synth][]): Synth {
   return (ctx, out, t) => { for (const [delay, s] of parts) s(ctx, out, t + delay); };
 }
@@ -131,12 +140,30 @@ const SYNTHS: Record<SoundId, Synth> = {
   goo: seq([0, noise(0.45, 0.22, 500)], [0, tone('sine', 520, 140, 0.4, 0.1)], [0.42, tone('sine', 180, 90, 0.18, 0.12)]),
   cure: seq([0, tone('triangle', 660, 660, 0.1, 0.08)], [0.1, tone('triangle', 880, 880, 0.1, 0.08)], [0.2, tone('triangle', 1320, 1320, 0.25, 0.08)]),
   squawk: seq([0, tone('sawtooth', 1400, 900, 0.12, 0.08)], [0.14, tone('sawtooth', 1500, 800, 0.18, 0.08)]),
+  flame: seq([0, noise(0.8, 0.35, 1100)], [0, whoosh(0.9, 0.35, 250, 1600)], [0, tone('sawtooth', 82, 60, 0.6, 0.06)]),
+  zap: seq(
+    [0, noise(0.06, 0.4, 6000)], [0.05, tone('sawtooth', 1800, 200, 0.12, 0.08)],
+    [0.1, noise(0.05, 0.35, 7000)], [0.15, tone('sawtooth', 2400, 300, 0.15, 0.07)],
+    [0.22, noise(0.25, 0.3, 3500)],
+  ),
+  // E5, G5, A5 ... then a squealing bend up high.
+  guitarSolo: seq(
+    [0, chord(82, 0.22, 0.07)], [0.22, chord(98, 0.22, 0.07)], [0.44, chord(110, 0.5, 0.08)],
+    [0.5, tone('sawtooth', 660, 990, 0.35, 0.05)], [0.85, tone('sawtooth', 990, 1320, 0.4, 0.05)],
+  ),
+  // The crowd goes wild: a roar, some clapping, a big chord.
+  encore: seq(
+    [0, whoosh(2.4, 0.4, 500, 2400)],
+    [0.1, noise(0.05, 0.3, 4000)], [0.35, noise(0.05, 0.3, 4000)], [0.6, noise(0.05, 0.3, 4000)], [0.85, noise(0.05, 0.3, 4000)],
+    [0.2, chord(110, 1.2, 0.07)],
+  ),
+  engine: seq([0, tone('sawtooth', 55, 140, 0.35, 0.09)], [0.35, tone('sawtooth', 140, 70, 0.5, 0.08)], [0, noise(0.8, 0.15, 400)]),
   click: tone('square', 900, 900, 0.03, 0.04),
   error: tone('square', 160, 120, 0.15, 0.08),
 };
 
 /** Minimum seconds between repeats so a swarm of lasers doesn't deafen anyone. */
-const THROTTLE: Partial<Record<SoundId, number>> = { rocketBoom: 0.15, laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4, thunder: 0.8, crumble: 0.5 };
+const THROTTLE: Partial<Record<SoundId, number>> = { engine: 0.6, zap: 0.1, rocketBoom: 0.15, laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4, thunder: 0.8, crumble: 0.5 };
 
 export class Audio {
   private ctx: AudioContext | null = null;

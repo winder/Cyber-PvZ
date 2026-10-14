@@ -331,3 +331,15 @@ describe('Necro-Gardener', () => {
     expect(boss.hp > 0 || g.phase === 'lost').toBe(true);
   });
 });
+
+describe('Satan', () => {
+  it('about 20 laser peashooters can beat him', () => {
+    const { boss } = bossFight(20, 'satan');
+    expect(boss.hp).toBeLessThanOrEqual(0);
+  });
+
+  it('a thin defense cannot stop him', () => {
+    const { g, boss } = bossFight(6, 'satan');
+    expect(boss.hp > 0 || g.phase === 'lost').toBe(true);
+  });
+});
