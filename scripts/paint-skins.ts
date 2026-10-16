@@ -444,7 +444,73 @@ function riotBot(): Skin {
   return s;
 }
 
-const PAINTERS: Record<string, () => Skin> = { satan, biker, roadie, riotBot };
+// ----------------------------------------------------------------------------
+//  Headless Horseman (humanoid layout, no head)
+// ----------------------------------------------------------------------------
+
+function horseman(): Skin {
+  const s = new Skin('horseman', 1031);
+  const STEEL = '#b9bfc9', STEEL_L = '#e2e6ec', STEEL_D = '#7d838f', IRON = '#3a3d45', RIVET = '#f4f6f9';
+  const MAIL = '#8a909b', MAIL_D = '#5c616b', GLOVE = '#16131a', BELT = '#2a1a14', GOLD = '#c9a43a';
+  const STUMP = '#4a0a0e', STUMP_D = '#1c0406', GREEN = '#5dff7a';
+  // Plate armor: bright toward the top of each plate, darker at the lap below it.
+  const plate = (v: number, every: number) => (v % every === every - 1 ? STEEL_D : v % every === 0 ? STEEL_L : STEEL);
+  const mail = (u: number, v: number) => ((u + (v % 2)) % 2 ? MAIL : MAIL_D);
+
+  // The breastplate: a ridge down the middle, rivets, a belt with a gold
+  // buckle. On top, a gorget round the stump where his head should be.
+  s.part('body', {
+    top: (u, v, w, h) => {
+      const dx = (u - (w / 2 - 0.5)) / (w / 2), dy = (v - (h / 2 - 0.5)) / (h / 2);
+      const r = dx * dx + dy * dy;
+      if (r < 0.18) return (u + v) % 4 === 0 ? GREEN : STUMP_D; // the dark hole, a green glow deep inside
+      if (r < 0.5) return STUMP;
+      return r < 0.75 ? STEEL_D : STEEL;
+    },
+    bottom: fill(MAIL_D),
+    sides: (u, v, w, h) => (v >= h - 5 ? (v === h - 5 ? BELT : mail(u, v)) : plate(v, 6)),
+    front: (u, v, w, h) => {
+      const cx = w / 2 - 0.5;
+      if (v >= h - 5) {
+        if (v === h - 5 || v === h - 4) return Math.abs(u - cx) < 1.6 ? GOLD : BELT;
+        return mail(u, v); // a mail skirt below the belt
+      }
+      if (Math.abs(u - cx) < 0.6) return STEEL_L; // the ridge
+      if ((u === 1 || u === w - 2) && v % 4 === 2) return RIVET;
+      if (v < 3) return v === 0 ? STEEL_D : IRON; // the gorget's rim
+      return plate(v, 6);
+    },
+    back: (u, v, w, h) => (v >= h - 5 ? (v === h - 5 ? BELT : mail(u, v)) : v < 3 ? IRON : plate(v, 6)),
+  });
+  // Pauldrons on the shoulders, mail at the elbow, black gauntlets.
+  for (const role of ['armR', 'armL'] as const) {
+    s.part(role, {
+      top: fill(STEEL_L),
+      bottom: fill(GLOVE),
+      sides: (u, v, w, h) => {
+        if (v < 8) return v === 7 ? STEEL_D : v % 3 === 0 ? STEEL_L : STEEL;
+        if (v < 12) return mail(u, v);
+        if (v >= h - 6) return v === h - 6 ? IRON : GLOVE;
+        return plate(v, 4);
+      },
+    });
+  }
+  // Greaves with a knee cop, over black riding boots.
+  for (const role of ['legR', 'legL'] as const) {
+    s.part(role, {
+      top: fill(MAIL_D),
+      bottom: fill(GLOVE),
+      sides: (u, v, w, h) => {
+        if (v >= h - 7) return v === h - 7 ? IRON : GLOVE;
+        if (v >= 9 && v <= 13) return v === 11 && u % 4 === 1 ? RIVET : v === 9 || v === 13 ? STEEL_D : STEEL_L;
+        return plate(v, 5);
+      },
+    });
+  }
+  return s;
+}
+
+const PAINTERS: Record<string, () => Skin> = { satan, biker, roadie, riotBot, horseman };
 
 const want = process.argv.slice(2);
 for (const [name, paint] of Object.entries(PAINTERS)) {

@@ -13,6 +13,7 @@ import { getCustomSkin } from '../skins';
 import { createBrain } from './brain';
 import { buildTombstoneHat, type StoneLook } from './graveyard';
 import { buildHair } from './hair';
+import { Steed } from './horseman';
 import { Parrot } from './parrot';
 import { rockExtras } from './rock';
 import { attachWeapon, buildGlassHelmet } from './weapons';
@@ -33,6 +34,8 @@ export interface Visual {
   muzzle?: TransformNode;
   /** A pet riding on it, until it flies off. */
   pet?: Parrot;
+  /** The Headless Horseman's horse, cape and floating pumpkin head. */
+  steed?: Steed;
 }
 
 /** Shared neon materials, one per color+style. */
@@ -410,6 +413,8 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
     perch.position.set(-8.4 * UNIT, 0.7 * UNIT, 0);
     pet = new Parrot(scene, `${name}-parrot`, perch, character.root);
   }
+  const steed = def.mount === 'zombieHorse' && character.joints.body
+    ? new Steed(scene, name, character, def.cape ?? '#0c0a10') : undefined;
   let update: Visual['update'];
   if (def.hair && character.joints.head) {
     const hair = hairTemplate(scene, def.hair, def.model!).createInstance(`${name}-hair`);
@@ -448,7 +453,7 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
       extra(time, moving);
     };
   }
-  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet };
+  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet, steed };
 }
 
 export function createStructureVisual(scene: Scene, mats: Materials, type: StructureId, name: string): Visual {

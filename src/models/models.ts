@@ -18,7 +18,7 @@ export type PartRole =
   | 'footR' | 'footL' | 'driverBody' | 'driverHead'
   | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL'
   | 'gut' | 'tail' | 'tailTip';
-export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener' | 'satan' | 'biker';
+export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener' | 'satan' | 'biker' | 'horseman';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -61,6 +61,9 @@ export const SKIN_UNITS = 64;
 export function skinUnits(model: ModelId): number {
   return MODELS[model].skinUnits ?? SKIN_UNITS;
 }
+
+/** How high the Headless Horseman's saddle is (where his hips sit), in units. */
+export const HORSE_SADDLE = 25;
 
 const ARMS_FORWARD: [number, number, number] = [-Math.PI / 2, 0, 0];
 
@@ -156,6 +159,22 @@ export const MODELS: Record<ModelId, ModelDef> = {
       : p.role === 'legR' ? { ...p, rest: [-1.35, 0, 0.12] as [number, number, number] }
       : p.role === 'legL' ? { ...p, rest: [-1.35, 0, -0.12] as [number, number, number] }
       : p),
+  },
+  // The Headless Horseman, sat high on his horse (the saddle is HORSE_SADDLE
+  // up): legs astride its flanks, his sword arm up and forward, the other
+  // hand on the reins. No head at all. Same skin layout as the humanoid
+  // (the head's corner is left empty); the horse is built in code.
+  horseman: {
+    label: 'Headless Horseman',
+    gait: 'ride',
+    parts: HUMANOID_PARTS.filter((p) => p.role !== 'head').map((p) => {
+      const raised = { ...p, pivot: [p.pivot[0], p.pivot[1] + HORSE_SADDLE - 12, p.pivot[2]] as [number, number, number] };
+      return p.role === 'armR' ? { ...raised, rest: [-1.05, 0, 0.12] as [number, number, number] }
+        : p.role === 'armL' ? { ...raised, rest: [-0.95, 0, -0.1] as [number, number, number] }
+        : p.role === 'legR' ? { ...raised, rest: [-0.35, 0, 0.5] as [number, number, number] }
+        : p.role === 'legL' ? { ...raised, rest: [-0.35, 0, -0.5] as [number, number, number] }
+        : raised;
+    }),
   },
   // ZomWes 8000's walker: a hulking robot on bell-bottom legs, with a little
   // driver on its head pulling levers. From Wesley's drawing.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOSSES, LEVELS, PLANTS, ZOMBIES, type PlantId, type Rock, type StructureId, type ZombieId } from '../src/data/config';
-import { Game, TICK_RATE } from '../src/sim/game';
+import { Game, TICK_RATE, type SimEvent } from '../src/sim/game';
 
 const GRAVEYARD = LEVELS.find((l) => l.id === 'graveyard')!;
 
@@ -140,7 +140,7 @@ describe('Tombstone Zombie', () => {
 describe('Cyber Cemetery balance', () => {
   it('a sensible defense can win', () => {
     // Whichever boss turns up.
-    for (const boss of BOSSES) {
+    for (const boss of GRAVEYARD.bosses ?? BOSSES) {
       let wins = 0;
       for (const seed of [1, 2, 3]) if (play(seed, PLAN, boss).phase === 'won') wins++;
       expect(wins, boss).toBeGreaterThanOrEqual(2);
@@ -153,5 +153,86 @@ describe('Cyber Cemetery balance', () => {
 
   it('a tiny defense loses before the end', () => {
     expect(play(1, PLAN.slice(0, 4)).phase).toBe('lost');
+  });
+});
+
+describe('Headless Horseman', () => {
+  const raise = ZOMBIES.horseman.raiseDead!;
+
+  /** The Horseman alone in the cemetery, through the back gate, and what happens for `seconds`. */
+  function ride(seconds: number) {
+    const g = new Game(1, GRAVEYARD);
+    g.phase = 'battle';
+    const boss = g.spawn('horseman', 'north');
+    const events: SimEvent[] = [];
+    const path: { x: number; z: number; halted: number }[] = [];
+    for (let i = 0; i < TICK_RATE * seconds && g.phase === 'battle'; i++) {
+      g.step();
+      events.push(...g.drainEvents());
+      path.push({ x: boss.x, z: boss.z, halted: boss.halted });
+    }
+    return { g, boss, events, path };
+  }
+
+  it('is the Cyber Cemetery\'s boss, and only turns up there', () => {
+    for (const seed of [1, 2, 3, 4]) expect(new Game(seed, GRAVEYARD).boss).toBe('horseman');
+    for (const level of LEVELS.filter((l) => l !== GRAVEYARD)) {
+      for (const seed of [1, 2, 3, 4, 5, 6]) expect(new Game(seed, level).boss).not.toBe('horseman');
+    }
+  });
+
+  it('now and then stops and raises the tombstones round him as zombies', () => {
+    const { g, events } = ride(60);
+    const raised = events.filter((e) => e.t === 'deadRaised');
+    expect(raised.length).toBeGreaterThanOrEqual(2);
+    for (const e of raised) {
+      expect(e.rocks.length).toBeGreaterThan(0);
+      expect(e.rocks.length).toBeLessThanOrEqual(raise.max);
+      expect(e.ids.length).toBe(e.rocks.length);
+      for (const [k, r] of e.rocks.entries()) {
+        const rock = GRAVEYARD.map.rocks[r];
+        expect(rock.look).toBeUndefined();
+        expect(Math.hypot(rock.x - e.x, rock.z - e.z)).toBeLessThanOrEqual(raise.reach);
+        expect(g.risen.has(r)).toBe(true);
+        expect(events).toContainEqual({ t: 'graveRisen', rock: r, x: rock.x, z: rock.z });
+        const risen = g.zombies.find((z) => z.id === e.ids[k]);
+        if (risen) {
+          expect(risen.type).toBe(raise.zombie);
+          expect(risen.grave).toBe(r);
+        }
+      }
+    }
+    // Every grave comes up only once.
+    const all = raised.flatMap((e) => (e.t === 'deadRaised' ? e.rocks : []));
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('raises the nearest tombstones first', () => {
+    const { events } = ride(30);
+    const e = events.find((ev) => ev.t === 'deadRaised')!;
+    if (e.t !== 'deadRaised') throw new Error('no raise');
+    const taken = new Set(e.rocks);
+    const farthest = Math.max(...e.rocks.map((r) => Math.hypot(GRAVEYARD.map.rocks[r].x - e.x, GRAVEYARD.map.rocks[r].z - e.z)));
+    for (const [i, rock] of GRAVEYARD.map.rocks.entries()) {
+      if (rock.look || taken.has(i)) continue;
+      expect(Math.hypot(rock.x - e.x, rock.z - e.z)).toBeGreaterThanOrEqual(farthest - 1e-9);
+    }
+  });
+
+  it('stands still while he does it, then rides on', () => {
+    const { path } = ride(40);
+    const start = path.findIndex((p) => p.halted > 0);
+    expect(start).toBeGreaterThan(0);
+    const end = start + Math.floor(raise.pause * TICK_RATE) - 1;
+    expect(Math.hypot(path[end].x - path[start].x, path[end].z - path[start].z)).toBeLessThan(0.05);
+    const later = path[Math.min(path.length - 1, end + TICK_RATE * 2)];
+    expect(Math.hypot(later.x - path[end].x, later.z - path[end].z)).toBeGreaterThan(0.5);
+  });
+
+  it('waits a good while between raisings', () => {
+    const { path } = ride(80);
+    const starts = path.flatMap((p, i) => (p.halted > 0 && (i === 0 || path[i - 1].halted === 0) ? [i] : []));
+    expect(starts.length).toBeGreaterThanOrEqual(2);
+    for (let k = 1; k < starts.length; k++) expect(starts[k] - starts[k - 1]).toBeGreaterThanOrEqual(raise.every * TICK_RATE - 1);
   });
 });

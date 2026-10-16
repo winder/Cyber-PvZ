@@ -3,6 +3,7 @@ import {
 } from '@babylonjs/core';
 import { MODELS } from '../models/models';
 import { UNIT, type BlockCharacter } from './blockModel';
+import { buildSword } from './horseman';
 import { buildGuitar, buildRoadCase } from './rock';
 
 // Weapons held by blocky characters. Built in skin units, like the models.
@@ -258,7 +259,7 @@ export function buildRiotShield(scene: Scene, name: string): TransformNode {
   return root;
 }
 
-type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield';
+type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield' | 'sword';
 
 const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode> = {
   scythe: buildScythe,
@@ -267,6 +268,7 @@ const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode>
   guitar: buildGuitar,
   roadCase: buildRoadCase,
   riotShield: buildRiotShield,
+  sword: buildSword,
 };
 
 /**

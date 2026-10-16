@@ -8,6 +8,7 @@ import { MOSH_MOVES, dancePose, newPose, slamPose, type MoshMove, type Pose } fr
 import { MODELS } from '../models/models';
 import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
 import { DiscoBall } from './disco';
+import { HORSEMAN_GREEN } from './horseman';
 import { RangeRing, RING_GROUP } from './rangeRing';
 import {
   createPlantVisual, createStructureVisual, createZombieVisual, type Visual,
@@ -256,6 +257,13 @@ export class Renderer {
         // Flyers lean into the wind; walkers bob instead of tilting.
         root.rotation.x = def.flying ? 0.3 : 0;
         if (!def.flying) root.position.y = ground + lift * UNIT * (def.scale ?? 1);
+        const steed = t.visual.steed;
+        if (steed) {
+          // Rearing up on its hind legs while he raises the dead.
+          const ride = steed.tick(dt, moving && !chewing, chewing, z.halted);
+          root.rotation.x = -ride.pitch;
+          root.position.y += ride.lift * UNIT * (def.scale ?? 1);
+        }
         if (z.moshing) this.rockOut(t, character, z.rocking > 0, z.id, ground, def.scale ?? 1);
         if (z.rising > 0 && def.rise) {
           // Clawing up out of the grave: shoves up in fits and starts, trembling.
@@ -500,6 +508,7 @@ export class Renderer {
         case 'summoned': this.summoned(e.id, e.ids); break;
         case 'flameRiff': this.flameRiff(e.id, e.x, e.z, e.toX, e.toZ, e.spread); break;
         case 'zapRiff': this.zapRiff(e.id, e.chain); break;
+        case 'deadRaised': this.raiseDead(e.id, e.x, e.z, e.rocks); break;
         case 'jumped': this.buildStructures(); break;
         default: break;
       }
@@ -925,6 +934,73 @@ export class Renderer {
         return t < 0.7;
       },
       dispose: () => { for (const b of bolts) b.dispose(); },
+    });
+  }
+
+  /**
+   * The Headless Horseman raises his sword: a ring of green fire rolls out
+   * across the ground from him, and green lightning forks down from the tip
+   * of his sword into every grave that opens.
+   */
+  private raiseDead(id: number, x: number, z: number, rocks: number[]): void {
+    const { scene, mats, terrain } = this.world;
+    const ground = terrain.terrainHeight(x, z);
+    this.shake(0.5);
+    const reach = ZOMBIES[this.game.zombies.find((o) => o.id === id)?.type ?? 'horseman'].raiseDead?.reach ?? 5;
+    const ring = MeshBuilder.CreateTorus('raiseRing', { diameter: 2, thickness: 0.25, tessellation: 40 }, scene);
+    ring.material = mats.neon(HORSEMAN_GREEN, 1.8, 0.85);
+    ring.position.set(x, ground + 0.15, z);
+    ring.isPickable = false;
+    const graves = rocks.map((r) => {
+      const rock = this.game.map.rocks[r];
+      return new Vector3(rock.x, terrain.terrainHeight(rock.x, rock.z) + 0.3, rock.z);
+    });
+    const bolts: Mesh[] = [];
+    const jag = () => {
+      for (const b of bolts) b.dispose();
+      bolts.length = 0;
+      // From the sword's tip once he's raised it (the horse rears first).
+      const muzzle = this.zombies.get(id)?.visual.muzzle;
+      const from = muzzle ? muzzle.getAbsolutePosition().clone() : new Vector3(x, ground + 6, z);
+      for (const to of graves) {
+        const path: Vector3[] = [from];
+        for (let k = 1; k < 7; k++) {
+          const p = Vector3.Lerp(from, to, k / 7);
+          p.y += Math.sin((k / 7) * Math.PI) * 1.5;
+          path.push(p.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).scale(0.8)));
+        }
+        path.push(to);
+        const bolt = MeshBuilder.CreateTube('raiseBolt', { path, radius: 0.06, tessellation: 4 }, scene);
+        bolt.material = mats.neon(bolts.length % 2 ? '#b8ff9a' : HORSEMAN_GREEN, 1.3);
+        bolt.isPickable = false;
+        bolts.push(bolt);
+      }
+    };
+    let t = 0, next = 0;
+    let struck = false;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        ring.scaling.setAll(1 + Math.min(1, t / 0.7) * reach);
+        ring.visibility = Math.max(0, 1 - t / 0.9);
+        // The bolts crackle from 0.4 s (sword up) to 1.4 s.
+        if (t > 0.4 && t < 1.4 && t > next) {
+          next = t + 0.07;
+          jag();
+          if (!struck) {
+            struck = true;
+            for (const g of graves) this.burst(g.x, g.z, HORSEMAN_GREEN, g.y + 0.5);
+          }
+        } else if (t >= 1.4 && bolts.length) {
+          for (const b of bolts) b.dispose();
+          bolts.length = 0;
+        }
+        return t < 1.5;
+      },
+      dispose: () => {
+        ring.dispose();
+        for (const b of bolts) b.dispose();
+      },
     });
   }
 

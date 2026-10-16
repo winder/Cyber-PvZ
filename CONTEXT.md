@@ -173,6 +173,21 @@ Red, big gut, goat legs, a spade-tipped tail and goat horns. He brings four
 **Roadie Zombies** as bodyguards, and a **Biker Zombie** gang rides in with
 him. He plays **Riffs** on his guitar. His own death: **Back to Hell**.
 
+**Headless Horseman** — The Cyber Cemetery's boss (its only one:
+`LevelDef.bosses`). A headless knight in silver armor and a long black
+cape, on a rotting **zombie horse**, with a sword in his right hand and his
+**pumpkin head** (a jack-o'-lantern with a creepy carved grin, wrapped in
+green fire) floating beside him. Every so often he stops and **raises the
+dead**. The horse, cape and pumpkin are looks only. Code: `ZombieDef.mount`,
+`ZombieDef.pet`, `ZombieDef.cape`, `src/render/horseman.ts`.
+
+**Raise the dead** — The Headless Horseman reins in for a few seconds
+(`Zombie.halted`; the horse rears and he holds his sword up), and the
+nearest standing tombstones within reach all **rise** at once as Tombstone
+Zombies, wherever they are (unlike a `'graves'` spawn group, it doesn't
+mind how close they are to the bases). If none are in reach he rides on and
+tries again a second later. Code: `ZombieDef.raiseDead`, event `deadRaised`.
+
 **Riff** — Satan's attack, every few seconds, at the nearest plant (or a
 base): by turns a cone of **flame** that burns every plant in it, then a
 bolt of **lightning** that jumps from plant to plant. Code: `ZombieDef.riff`,
@@ -186,8 +201,8 @@ case in front like a shield.
 tombstone instead of walking in: the rock is gone for good (the way through
 opens up), and it climbs out wearing a clump of grass with that same
 tombstone stuck in it. Only graves far enough from the bases along the
-zombies' route rise. The stone is a helmet (armor). Spawn groups for it come
-from `'graves'`. Code: `ZombieDef.rise`, `ZombieDef.hat`, `Zombie.grave`,
+zombies' route rise (except when the Headless Horseman **raises the dead**).
+The stone is a helmet (armor). Spawn groups for it come from `'graves'`. Code: `ZombieDef.rise`, `ZombieDef.hat`, `Zombie.grave`,
 `Game.risen`.
 
 **Open grave** — The hole and heap of dug-up earth left where a tombstone

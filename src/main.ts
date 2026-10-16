@@ -331,12 +331,19 @@ function react(events: SimEvent[]): void {
         audio.play('bossRoar');
         // He brings a biker gang, and you hear them first.
         if (ZOMBIES[e.type].riff) audio.play('engine');
+        // And he gallops in on a horse.
+        if (ZOMBIES[e.type].raiseDead) audio.play('neigh');
         if (renderer.discoBoss) hud.toast(`🪩 ${ZOMBIES[e.type].name} has DISCO FEVER! 🪩`, 4000);
         break;
       case 'stomp': audio.play('stomp'); break;
       case 'rocketFired': audio.play('rocket'); break;
       case 'rocketHit': audio.play('rocketBoom'); break;
       case 'summoned': audio.play('summon'); break;
+      case 'deadRaised':
+        audio.play('raiseDead');
+        audio.play('neigh');
+        hud.toast(`🎃 ${ZOMBIES[game.zombies.find((z) => z.id === e.id)?.type ?? 'horseman'].name} raises the dead! ${e.ids.length} graves open! 🪦`, 3000);
+        break;
       case 'flameRiff': audio.play('flame'); break;
       case 'zapRiff': audio.play('zap'); break;
       case 'gooSprayed':

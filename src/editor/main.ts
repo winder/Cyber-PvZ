@@ -3,8 +3,8 @@ import {
   MeshBuilder, Scene, StandardMaterial, Texture, Vector3, type AbstractMesh,
 } from '@babylonjs/core';
 import { ZOMBIES, type ZombieId } from '../data/config';
-import { MODELS } from '../models/models';
-import { animate, assemble, buildPartMesh, skinMaterial, type BlockCharacter } from '../render/blockModel';
+import { HORSE_SADDLE, MODELS } from '../models/models';
+import { animate, assemble, buildPartMesh, skinMaterial, UNIT, type BlockCharacter } from '../render/blockModel';
 import { buildHair } from '../render/hair';
 import { rockExtras } from '../render/rock';
 import { attachWeapon, buildGlassHelmet } from '../render/weapons';
@@ -335,6 +335,8 @@ function buildCharacter(id: ZombieId): void {
     return { def, mesh };
   });
   character = assemble('character', scene, model, parts);
+  // A rider sits up at saddle height; there's no horse here, so bring him down to the stand.
+  if (ZOMBIES[id].mount === 'zombieHorse') character.root.position.y = -(HORSE_SADDLE - 12) * UNIT;
   // Hair isn't painted (it's 3D curls), but show it so you can see the look.
   // It's not pickable, so you can still paint the head underneath.
   const weapon = ZOMBIES[id].weapon;

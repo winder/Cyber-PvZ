@@ -158,6 +158,18 @@ const SYNTHS: Record<SoundId, Synth> = {
     [0.2, chord(110, 1.2, 0.07)],
   ),
   engine: seq([0, tone('sawtooth', 55, 140, 0.35, 0.09)], [0.35, tone('sawtooth', 140, 70, 0.5, 0.08)], [0, noise(0.8, 0.15, 400)]),
+  // A ghostly whinny: up, then shaking its way down.
+  neigh: seq(
+    [0, tone('sawtooth', 520, 980, 0.18, 0.07)], [0.18, tone('sawtooth', 980, 760, 0.1, 0.07)],
+    [0.28, tone('sawtooth', 820, 600, 0.1, 0.07)], [0.38, tone('sawtooth', 680, 480, 0.1, 0.06)],
+    [0.48, tone('sawtooth', 560, 300, 0.3, 0.05)], [0, noise(0.6, 0.08, 2500)],
+  ),
+  // The ground rumbles and an eerie chord rises as the graves open.
+  raiseDead: seq(
+    [0, noise(1.2, 0.3, 250)], [0, tone('sine', 60, 40, 1.2, 0.3)],
+    [0.1, tone('triangle', 220, 330, 0.9, 0.06)], [0.1, tone('triangle', 262, 392, 0.9, 0.05)],
+    [0.1, tone('triangle', 311, 466, 0.9, 0.05)],
+  ),
   click: tone('square', 900, 900, 0.03, 0.04),
   error: tone('square', 160, 120, 0.15, 0.08),
 };

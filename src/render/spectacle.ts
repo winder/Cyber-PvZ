@@ -196,6 +196,7 @@ export class Spectacle {
             `HAS ENTERED THE ${this.level.name.toUpperCase()}`,
             def.riff ? 'with his roadies and a biker gang'
             : guards ? `with ${guards.count} ${ZOMBIES[guards.zombie].name}s`
+            : def.raiseDead ? 'and the dead rise to ride with him'
             : def.pet ? `and his trusty ${def.pet}`
             : def.goo ? 'and your plants are thirsty' : '',
           );

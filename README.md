@@ -24,7 +24,7 @@ Choose a level on the title screen, or link straight to one:
 `?level=1` (Neon Grid) or `?level=2` (Rust Corridor), up to `?level=5`
 (Hellfire Arena, a rock concert). It combines with debug mode, e.g.
 `?level=2&debug`. Pick the final boss with `?boss=zomwes`, `captain`,
-`gardener` or `satan`.
+`gardener`, `satan` or `horseman` (the Cyber Cemetery's Headless Horseman).
 
 ## Controls
 
@@ -51,7 +51,8 @@ or `http://localhost:5173/?debug` locally). A 🐞 panel appears with:
 
 ## Change the game
 
-Default skins for Satan, the Biker and the Roadie are painted by
+Default skins for Satan, the Biker, the Roadie, the Riot Shield Bot and the
+Headless Horseman are painted by
 `npm run skins` (then commit the PNGs).
 
 Everything you'd want to tweak is in **`src/data/config.ts`**: plant costs,

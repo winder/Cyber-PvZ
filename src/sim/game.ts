@@ -62,8 +62,10 @@ export interface Zombie {
   rising: number;
   /** Rocketeers and goo sprayers: seconds until it can fire again. */
   reload: number;
-  /** Summoners: seconds until it calls up more zombies. */
+  /** Summoners (and raisers of the dead): seconds until it calls up more zombies. */
   summonIn: number;
+  /** Seconds left standing still, raising the dead. */
+  halted: number;
   /** Riff players: how many riffs so far (they take turns: flame, lightning). */
   riffs: number;
   /** In the mosh pit, behind a rock shield. */
@@ -112,6 +114,8 @@ export type SimEvent =
   | { t: 'rocketHit'; x: number; z: number; radius: number }
   /** `id`: who called them up; `ids`: the zombies that appeared. */
   | { t: 'summoned'; id: number; ids: number[] }
+  /** `id`: who raised them, from where; `rocks`: the tombstones that came up; `ids`: the zombies. */
+  | { t: 'deadRaised'; id: number; x: number; z: number; rocks: number[]; ids: number[] }
   /** `id`: who sprayed. `ids`: the plants it zombified, round (x, z). */
   | { t: 'gooSprayed'; id: number; x: number; z: number; radius: number; ids: number[] }
   /** Plants back to normal: burned clean by a strike, worn off, or their boss fell. */
@@ -447,7 +451,8 @@ export class Game {
       id: this.nextId++, type, x, z, hp: ZOMBIES[type].hp,
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
       leader: null, slot: 0, detour: 0, grave: -1, rising: 0,
-      reload: ZOMBIES[type].goo?.first ?? ZOMBIES[type].riff?.first ?? 0, summonIn: ZOMBIES[type].summon?.first ?? 0,
+      reload: ZOMBIES[type].goo?.first ?? ZOMBIES[type].riff?.first ?? 0,
+      summonIn: ZOMBIES[type].summon?.first ?? ZOMBIES[type].raiseDead?.first ?? 0, halted: 0,
       riffs: 0, moshing: false, rocking: 0, surging: 0,
     };
     this.zombies.push(zombie);
@@ -471,18 +476,25 @@ export class Game {
     }
     if (graves.length === 0) return undefined;
     const rock = graves[Math.floor(this.rand() * graves.length)];
-    const { x, z } = this.map.rocks[rock];
-    this.risen.add(rock);
+    return this.riseFrom([rock], type)[0];
+  }
+
+  /** These tombstones come up as zombies, and are gone from the map for good. */
+  private riseFrom(rocks: number[], type: ZombieId): Zombie[] {
+    for (const rock of rocks) this.risen.add(rock);
     this.markObstacles();
     for (const p of this.plants) this.markPlant(p);
     this.fieldDirty = true;
-    const zombie = this.addZombie(type, x, z);
-    zombie.grave = rock;
-    zombie.rising = rise.time;
-    // Tombstones face the front (south); so does whatever climbs out of one.
-    zombie.facing = -Math.PI / 2;
-    this.events.push({ t: 'graveRisen', rock, x, z });
-    return zombie;
+    return rocks.map((rock) => {
+      const { x, z } = this.map.rocks[rock];
+      const zombie = this.addZombie(type, x, z);
+      zombie.grave = rock;
+      zombie.rising = ZOMBIES[type].rise?.time ?? 0;
+      // Tombstones face the front (south); so does whatever climbs out of one.
+      zombie.facing = -Math.PI / 2;
+      this.events.push({ t: 'graveRisen', rock, x, z });
+      return zombie;
+    });
   }
 
   /** Block the cells under standing rocks and ravines (and an arena's stands and seats). */
@@ -680,6 +692,7 @@ export class Game {
         zb.rising = Math.max(0, zb.rising - DT);
         continue;
       }
+      if (def.raiseDead && this.raiseDead(zb)) continue;
       if (def.rockets) this.fireRocket(zb);
       if (def.summon) this.summonCrew(zb);
       if (def.goo) this.sprayGoo(zb);
@@ -881,6 +894,37 @@ export class Game {
       }
     }
     if (ids.length) this.events.push({ t: 'summoned', id: zb.id, ids });
+  }
+
+  /**
+   * Now and then, stop and call the tombstones round about up out of the
+   * ground. True while it's standing still doing it.
+   */
+  private raiseDead(zb: Zombie): boolean {
+    const r = ZOMBIES[zb.type].raiseDead!;
+    if (zb.halted > 0) {
+      zb.halted = Math.max(0, zb.halted - DT);
+      return true;
+    }
+    zb.summonIn -= DT;
+    if (zb.summonIn > 0) return false;
+    const near: { rock: number; d: number }[] = [];
+    for (const [i, rock] of this.map.rocks.entries()) {
+      if (rock.look || this.risen.has(i)) continue;
+      const d = Math.hypot(rock.x - zb.x, rock.z - zb.z);
+      if (d <= r.reach) near.push({ rock: i, d });
+    }
+    if (near.length === 0) {
+      zb.summonIn = 1;
+      return false;
+    }
+    near.sort((a, b) => a.d - b.d);
+    const rocks = near.slice(0, r.max).map((n) => n.rock);
+    zb.summonIn = r.every;
+    zb.halted = r.pause;
+    const ids = this.riseFrom(rocks, r.zombie).map((z) => z.id);
+    this.events.push({ t: 'deadRaised', id: zb.id, x: zb.x, z: zb.z, rocks, ids });
+    return true;
   }
 
   /** Chew (or, with a sweeping weapon, slash everything in reach). */

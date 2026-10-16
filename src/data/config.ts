@@ -19,7 +19,7 @@ import type { ModelId } from '../models/models';
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
 export type ZombieId =
   | 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain' | 'gardener'
-  | 'satan' | 'biker' | 'roadie';
+  | 'satan' | 'biker' | 'roadie' | 'horseman';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
@@ -78,11 +78,16 @@ export interface ZombieDef {
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
   /** Something held in (or in place of) the right hand. */
-  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield';
-  /** Something it rides (drawn under it, wheels turning). Looks only. */
-  mount?: 'motorcycle';
-  /** A pet that rides on its shoulder. Looks only. */
-  pet?: 'parrot';
+  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield' | 'sword';
+  /** Something it rides (drawn under it, wheels turning or hooves galloping). Looks only. */
+  mount?: 'motorcycle' | 'zombieHorse';
+  /**
+   * A pet that rides on its shoulder, or a jack-o'-lantern head in green fire
+   * that floats beside it. Looks only.
+   */
+  pet?: 'parrot' | 'pumpkinHead';
+  /** Worn on the back, flapping as it goes. Looks only. */
+  cape?: string;
   /**
    * Worn on the head: a clump of grass with the tombstone it rose from stuck
    * in it, a cracked glass greenhouse, or a pair of curling goat horns.
@@ -114,6 +119,13 @@ export interface ZombieDef {
    * between `min` and `max` seconds (the first call comes after `first`).
    */
   summon?: { zombie: ZombieId; count: number; first: number; min: number; max: number };
+  /**
+   * Raises the dead: every `every` seconds (the first after `first`) it stops
+   * for `pause` seconds, and up to `max` standing tombstones within `reach`
+   * (the nearest first) come up as `zombie`s. With no tombstones in reach it
+   * rides on and tries again a second later.
+   */
+  raiseDead?: { zombie: ZombieId; reach: number; max: number; first: number; every: number; pause: number };
   /**
    * Sprays goo every `every` seconds (the first after `first`) at the nearest
    * healthy plant within `range`, while it walks. Every healthy plant within
@@ -397,6 +409,30 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     model: 'humanoid',
     skin: 'skins/roadie.png',
     weapon: 'roadCase',
+  },
+  // The Cyber Cemetery's own boss: a headless knight in silver armor and a
+  // long black cape, on a zombie horse, sword in hand, with his jack-o'-lantern
+  // head floating beside him in green fire. Every so often he reins in and
+  // raises his sword, and every tombstone round him comes up as a zombie.
+  horseman: {
+    name: 'Headless Horseman',
+    icon: '🎃',
+    hp: 4000,
+    speed: 1.05,
+    dps: 60,
+    armor: 0.3,
+    flying: false,
+    radius: 1.2,
+    color: '#5dff7a',
+    model: 'horseman',
+    skin: 'skins/horseman.png',
+    scale: 2.2,
+    weapon: 'sword',
+    mount: 'zombieHorse',
+    pet: 'pumpkinHead',
+    cape: '#0c0a10',
+    boss: true,
+    raiseDead: { zombie: 'tombstone', reach: 5.5, max: 6, first: 5, every: 13, pause: 2.6 },
   },
   // A final boss. Named after his creator.
   zomwes: {
@@ -1163,6 +1199,7 @@ export const LEVELS: LevelDef[] = [
     map: GRAVEYARD_MAP,
     theme: GRAVEYARD_THEME,
     waves: GRAVEYARD_WAVES,
+    bosses: ['horseman'],
   },
   {
     id: 'jungle',
@@ -1201,6 +1238,6 @@ export type SoundId =
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
   | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie'
   | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk' | 'goo' | 'cure'
-  | 'flame' | 'zap' | 'guitarSolo' | 'encore' | 'engine';
+  | 'flame' | 'zap' | 'guitarSolo' | 'encore' | 'engine' | 'neigh' | 'raiseDead';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};
