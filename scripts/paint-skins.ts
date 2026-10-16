@@ -363,7 +363,88 @@ function roadie(): Skin {
   return s;
 }
 
-const PAINTERS: Record<string, () => Skin> = { satan, biker, roadie };
+// ----------------------------------------------------------------------------
+//  Riot Shield Bot (humanoid layout)
+// ----------------------------------------------------------------------------
+
+function riotBot(): Skin {
+  const s = new Skin('humanoid', 1357);
+  const SKIN = '#93b07c', SKIN_D = '#718d5f', ROT = '#5c704b';
+  const HELMET = '#1d2333', HELMET_L = '#2c3550', VISOR = '#57c8ff', VISOR_D = '#2a7fd6';
+  const ARMOR = '#27304a', ARMOR_L = '#3a4669', PAD = '#161b28', GLOW = '#6fd8ff', PANTS = '#2b3140', BOOT = '#111318';
+  const skin = (u: number, v: number) => (blotch(u, v, 3) ? ROT : SKIN);
+  // Letters on a 3×5 grid, for RIOT.
+  const GLYPHS: Record<string, string[]> = {
+    R: ['110', '101', '110', '101', '101'], I: ['111', '010', '010', '010', '111'],
+    O: ['111', '101', '101', '101', '111'], T: ['111', '010', '010', '010', '010'],
+  };
+  const text = (word: string, u: number, v: number, x0: number, y0: number) => {
+    const col = u - x0, row = v - y0;
+    const letter = Math.floor(col / 4), cx = col % 4;
+    if (row < 0 || row > 4 || col < 0 || letter >= word.length || cx > 2) return false;
+    return GLYPHS[word[letter]][row][cx] === '1';
+  };
+
+  // A riot helmet with a glowing blue visor; red eyes and a rotten jaw below it.
+  s.part('head', {
+    top: (u, v) => (u === 7 || u === 8 ? HELMET_L : HELMET),
+    bottom: fill(SKIN_D),
+    back: (u, v) => (v < 11 ? (v === 10 ? HELMET_L : HELMET) : skin(u, v)),
+    sides: (u, v, w) => (v < 4 || (v < 11 && u > 3) ? (v === 3 ? HELMET_L : HELMET) : v < 11 ? (v === 10 ? VISOR_D : VISOR) : skin(u, v)),
+    front: (u, v) => {
+      if (v < 3) return v === 2 ? HELMET_L : HELMET;
+      if (v < 10) {
+        if (v === 3 || v === 9) return VISOR_D; // the visor's edge
+        for (const ex of [4, 11]) if (Math.abs(u - ex) <= 1 && v >= 5 && v <= 6) return v === 5 ? '#ff2040' : '#b0102a';
+        return (u + v) % 7 === 0 ? '#bfeaff' : VISOR; // glints
+      }
+      if (v === 12 && u >= 4 && u <= 11) return u % 2 ? '#2a1f2f' : '#d8d2b0'; // teeth
+      return skin(u, v);
+    },
+  });
+
+  // An armored vest: plates down the front with a glowing strip, RIOT on the back.
+  s.part('body', {
+    top: fill(ARMOR),
+    bottom: fill(PANTS),
+    sides: (u, v, w, h) => (v >= h - 4 ? (v === h - 4 ? PAD : PANTS) : v % 6 === 5 ? PAD : ARMOR),
+    front: (u, v, w, h) => {
+      if (v >= h - 4) return v === h - 4 ? PAD : PANTS;
+      if (v === 2 && u > 2 && u < w - 3) return GLOW;
+      if (u === w / 2 - 1 || u === w / 2) return PAD; // the seam
+      if (v % 6 === 5) return PAD;
+      return (v % 6 < 2) ? ARMOR_L : ARMOR;
+    },
+    back: (u, v, w, h) => {
+      if (v >= h - 4) return v === h - 4 ? PAD : PANTS;
+      if (text('RIOT', u, v, 1, 4)) return GLOW;
+      return v % 6 === 5 ? PAD : ARMOR;
+    },
+  });
+  // Armored shoulders, rotten forearms, black gloves.
+  for (const role of ['armR', 'armL'] as const) {
+    s.part(role, {
+      top: fill(ARMOR_L),
+      bottom: fill(PAD),
+      sides: (u, v, w, h) => (v < 8 ? (v === 7 ? PAD : ARMOR_L) : v >= h - 4 ? PAD : skin(u, v)),
+    });
+  }
+  // Dark trousers, glowing knee pads, boots.
+  for (const role of ['legR', 'legL'] as const) {
+    s.part(role, {
+      top: fill(PANTS),
+      bottom: fill(BOOT),
+      sides: (u, v, w, h) => {
+        if (v >= 8 && v <= 12) return v === 10 ? GLOW : PAD;
+        if (v >= h - 6) return v === h - 6 ? PAD : BOOT;
+        return v > 14 && blotch(u, v, 7) ? skin(u, v) : PANTS; // torn, rotten skin showing
+      },
+    });
+  }
+  return s;
+}
+
+const PAINTERS: Record<string, () => Skin> = { satan, biker, roadie, riotBot };
 
 const want = process.argv.slice(2);
 for (const [name, paint] of Object.entries(PAINTERS)) {

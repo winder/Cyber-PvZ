@@ -78,7 +78,7 @@ export interface ZombieDef {
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
   /** Something held in (or in place of) the right hand. */
-  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase';
+  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield';
   /** Something it rides (drawn under it, wheels turning). Looks only. */
   mount?: 'motorcycle';
   /** A pet that rides on its shoulder. Looks only. */
@@ -244,6 +244,9 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     flying: false,
     radius: 0.45,
     color: '#5b7bff',
+    model: 'humanoid',
+    skin: 'skins/riotBot.png',
+    weapon: 'riotShield',
     death: 'shieldSquish',
   },
   jetpack: {

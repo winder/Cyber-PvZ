@@ -134,6 +134,10 @@ function rigOf(visual: Visual, type: ZombieId): Rig | null {
       if (role.startsWith('arm')) rig.arms.push(joint);
       if (role.startsWith('leg')) rig.legs.push(joint);
     }
+    // A riot shield held out in front comes away by itself.
+    const shield = def.weapon === 'riotShield' ? root.getChildTransformNodes(false).find((n) => n.name.endsWith('-weapon')) : undefined;
+    const panel = shield?.getChildMeshes(true).find((m) => m.name.endsWith('-panel'));
+    if (shield && panel) rig.shield = { role: 'extra', node: shield, mesh: panel };
   } else {
     // Simple box-built zombies: each part is a mesh on the root, named `<root>-<part>`.
     const byPart = new Map<string, AbstractMesh>();
@@ -877,7 +881,7 @@ function shieldSquish(rig: Rig, stage: DeathStage): DeathEffect {
   let flat: Quaternion | null = null;
   let landed = false;
   const WOBBLE = 0.3, LIFT = 0.75, HANG = 0.9, SLAM = 1.05, SINK = 2.3, END = 3;
-  const bodyHeight = 1.9 * s;
+  const bodyHeight = 1.6 * s;
   const squash = 0.12;
   const show: Show = new Show((t) => {
     if (t < WOBBLE) {

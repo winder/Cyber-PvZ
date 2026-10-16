@@ -1,5 +1,5 @@
 import {
-  Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3,
+  Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, VertexData,
 } from '@babylonjs/core';
 import { MODELS } from '../models/models';
 import { UNIT, type BlockCharacter } from './blockModel';
@@ -164,7 +164,101 @@ export function buildWateringCan(scene: Scene, name: string): TransformNode {
   return root;
 }
 
-type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase';
+/**
+ * A riot shield shaped like a knight's: a flat top, straight sides and a
+ * point at the bottom. See-through glowing blue, with a bright rim and a
+ * cross, and curved back at the edges like a real riot shield. Centered on
+ * its origin, front toward +z, with grips behind for the hands.
+ */
+export function buildRiotShield(scene: Scene, name: string): TransformNode {
+  const root = new TransformNode(name, scene);
+  const panelMat = material(scene, 'riotShieldPanel', () => {
+    const m = new StandardMaterial('riotShieldPanel', scene);
+    m.diffuseColor = new Color3(0.3, 0.6, 1);
+    m.emissiveColor = new Color3(0.1, 0.35, 0.85);
+    m.specularColor = new Color3(1, 1, 1);
+    m.specularPower = 64;
+    m.alpha = 0.3;
+    m.backFaceCulling = false;
+    return m;
+  });
+  const rimMat = material(scene, 'riotShieldRim', () => {
+    const m = new StandardMaterial('riotShieldRim', scene);
+    m.emissiveColor = new Color3(0.35, 0.8, 1);
+    m.disableLighting = true;
+    return m;
+  });
+  const gripMat = material(scene, 'riotShieldGrip', () => {
+    const m = new StandardMaterial('riotShieldGrip', scene);
+    m.diffuseColor = new Color3(0.12, 0.14, 0.2);
+    m.specularColor = new Color3(0.3, 0.3, 0.35);
+    return m;
+  });
+  const glow = scene.getGlowLayerByName('glow');
+
+  const W = 6.5, top = 8.5, shoulder = 1, bottom = -8.5;
+  // Curved back at the edges, like a riot shield.
+  const bend = (x: number, y: number) => new Vector3(x * UNIT, y * UNIT, -0.04 * x * x * UNIT);
+  // The outline, clockwise from the top-left corner.
+  const outline: Vector3[] = [];
+  for (let i = 0; i <= 12; i++) {
+    const x = -W + (2 * W * i) / 12;
+    outline.push(bend(x, top - 0.5 * (x / W) ** 2)); // the top bows up a touch
+  }
+  for (let i = 1; i <= 4; i++) outline.push(bend(W, top - 0.5 - ((top - 0.5 - shoulder) * i) / 4));
+  // Down to the point: a curve from the shoulder, pulled out toward the corner.
+  const curve = (side: number, a: number) => {
+    const cy = bottom + 3;
+    const x = (1 - a) ** 2 * W + 2 * (1 - a) * a * W;
+    const y = (1 - a) ** 2 * shoulder + 2 * (1 - a) * a * cy + a * a * bottom;
+    return bend(side * x, y);
+  };
+  for (let i = 1; i <= 10; i++) outline.push(curve(1, i / 10));
+  for (let i = 9; i >= 0; i--) outline.push(curve(-1, i / 10));
+  for (let i = 1; i < 4; i++) outline.push(bend(-W, shoulder + ((top - 0.5 - shoulder) * i) / 4));
+
+  // The see-through panel: a fan from the middle (the shape is convex).
+  const positions = [0, 0, 0];
+  for (const p of outline) positions.push(p.x, p.y, p.z);
+  const indices: number[] = [];
+  for (let i = 0; i < outline.length; i++) indices.push(0, 1 + i, 1 + ((i + 1) % outline.length));
+  const normals: number[] = [];
+  VertexData.ComputeNormals(positions, indices, normals);
+  const panel = new Mesh(`${name}-panel`, scene);
+  Object.assign(new VertexData(), { positions, indices, normals }).applyToMesh(panel);
+  panel.material = panelMat;
+  panel.parent = root;
+  panel.isPickable = false;
+  glow?.addExcludedMesh(panel); // only the rim and cross bloom
+
+  const tube = (n: string, path: Vector3[], r: number) => {
+    const t = MeshBuilder.CreateTube(`${name}-${n}`, { path, radius: r * UNIT, tessellation: 6, cap: Mesh.CAP_ALL }, scene);
+    t.material = rimMat;
+    t.parent = root;
+    t.isPickable = false;
+    return t;
+  };
+  tube('rim', [...outline, outline[0], outline[1]], 0.45);
+  // A thinner inner trim, and a cross.
+  const inner = outline.map((p) => bend((p.x / UNIT) * 0.78, (p.y / UNIT) * 0.8 + 0.4).addInPlaceFromFloats(0, 0, 0.1 * UNIT));
+  tube('trim', [...inner, inner[0], inner[1]], 0.18);
+  tube('crossV', [bend(0, 5), bend(0, -4.5)].map((p) => p.addInPlaceFromFloats(0, 0, 0.1 * UNIT)), 0.3);
+  const across: Vector3[] = [];
+  for (let i = 0; i <= 8; i++) across.push(bend(-3.2 + 0.8 * i, 2.2).addInPlaceFromFloats(0, 0, 0.1 * UNIT));
+  tube('crossH', across, 0.3);
+
+  // Grips behind, where the hands hold it.
+  for (const x of [-5.5, 5.5]) {
+    const grip = MeshBuilder.CreateBox(`${name}-grip${x}`, { width: 1.2 * UNIT, height: 2.5 * UNIT, depth: 1.6 * UNIT }, scene);
+    grip.position = bend(x, 5).addInPlaceFromFloats(0, 0, -0.9 * UNIT);
+    grip.material = gripMat;
+    grip.parent = root;
+    grip.isPickable = false;
+  }
+  return root;
+}
+
+type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield';
 
 const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode> = {
   scythe: buildScythe,
@@ -172,15 +266,16 @@ const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode>
   wateringCan: buildWateringCan,
   guitar: buildGuitar,
   roadCase: buildRoadCase,
+  riotShield: buildRiotShield,
 };
 
 /**
  * Put a weapon in the character's right hand (or, for a launcher or watering
  * can, in place of it). Two-handed things (a guitar slung across the gut, a
- * road case held out in front) hang off the body instead.
+ * road case or riot shield held out in front) hang off the body instead.
  */
 export function attachWeapon(scene: Scene, character: BlockCharacter, kind: WeaponKind, name: string): TransformNode | null {
-  if (kind === 'guitar' || kind === 'roadCase') {
+  if (kind === 'guitar' || kind === 'roadCase' || kind === 'riotShield') {
     const body = character.joints.body;
     if (!body) return null;
     const weapon = WEAPONS[kind](scene, name);
@@ -189,6 +284,9 @@ export function attachWeapon(scene: Scene, character: BlockCharacter, kind: Weap
       // Slung low across the gut, the neck angled up to the left hand.
       weapon.position.set(0.5 * UNIT, -7.5 * UNIT, 8 * UNIT);
       weapon.rotation.set(-0.1, 0, 0.95);
+    } else if (kind === 'riotShield') {
+      // Just past the hands, top at the shoulders.
+      weapon.position.set(0, -7 * UNIT, 12.5 * UNIT);
     } else {
       weapon.position.set(0, -3.5 * UNIT, 8.5 * UNIT);
     }

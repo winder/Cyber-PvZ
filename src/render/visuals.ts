@@ -243,15 +243,6 @@ const zombieFactories: Partial<Record<ZombieId, Factory>> = {
     return { root, height: 1.6 };
   },
 
-  riotBot(scene, mats, name) {
-    const root = new TransformNode(name, scene);
-    zombieBody(scene, mats, root, name, '#8899aa', 1.2);
-    const shield = MeshBuilder.CreateBox(`${name}-shield`, { width: 0.9, height: 1.1, depth: 0.06 }, scene);
-    shield.material = mats.neon(ZOMBIES.riotBot.color, 0.9, 0.6);
-    part(shield, root, 0, 0.8, 0.6);
-    return { root, height: 1.9 };
-  },
-
   jetpack(scene, mats, name) {
     const root = new TransformNode(name, scene);
     zombieBody(scene, mats, root, name, '#9fbf7a', 0.9);
