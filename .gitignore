@@ -6,3 +6,7 @@ dist
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# make run
+.vite.pid
+.vite.log
