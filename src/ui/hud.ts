@@ -1,5 +1,5 @@
 import {
-  ABILITIES, PLANTS, STRUCTURES, ZOMBIES, abilityLook, type AbilityId, type PlantId, type SpawnFrom,
+  ABILITIES, PLANTS, STRUCTURES, ZOMBIES, abilityLook, type AbilityId, type PlantId, type SpawnFrom, type ZoneId,
 } from '../data/config';
 import type { Game } from '../sim/game';
 
@@ -17,7 +17,7 @@ export interface HudHandlers {
   onOverlay(): void;
 }
 
-const EDGE_NAMES: Record<SpawnFrom, string> = { north: 'North', south: 'South', east: 'East', west: 'West', graves: 'the graves' };
+const EDGE_NAMES: Partial<Record<SpawnFrom, string>> = { north: 'North', south: 'South', east: 'East', west: 'West', graves: 'the graves' };
 
 function $(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -178,7 +178,7 @@ export class Hud {
     if (!build || this.lastPreviewWave === this.game.wave) return;
     this.lastPreviewWave = this.game.wave;
     const lines = this.game.wavePreview()
-      .map((l) => `<div>${ZOMBIES[l.zombie].icon} ${l.count} × ${ZOMBIES[l.zombie].name} <small>from ${EDGE_NAMES[l.edge]}</small></div>`)
+      .map((l) => `<div>${ZOMBIES[l.zombie].icon} ${l.count} × ${ZOMBIES[l.zombie].name} <small>from ${EDGE_NAMES[l.edge] ?? `the ${this.game.map.zones?.[l.edge as ZoneId]?.name ?? l.edge}`}</small></div>`)
       .join('');
     el.innerHTML = `<h3>INCOMING</h3>${lines}`;
   }

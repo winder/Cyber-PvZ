@@ -2,7 +2,7 @@ import {
   Color3, Color4, DirectionalLight, Engine, GlowLayer, HemisphericLight, Mesh, MeshBuilder,
   Scene, StandardMaterial, Vector3, VertexBuffer, VertexData,
 } from '@babylonjs/core';
-import { type EdgeId, type LevelDef } from '../data/config';
+import { type EdgeId, type LevelDef, type SpawnFrom } from '../data/config';
 import { insideRect } from '../sim/arena';
 import { arenaTexture } from './arenaFloor';
 import { createConcert } from './concert';
@@ -10,6 +10,7 @@ import { buildCarWreck, createRuinedCity, type Decor } from './decor';
 import { buildTombstones, createGraveyard, type Tombstones } from './graveyard';
 import { createJungle } from './jungle';
 import { streetTexture } from './streetTexture';
+import { armyBaseTexture, createWarZone } from './warzone';
 import { RAVINE_DEPTH, Terrain } from './terrain';
 import { Materials } from './visuals';
 
@@ -18,7 +19,8 @@ export interface World {
   mats: Materials;
   ground: Mesh;
   glow: GlowLayer;
-  edgeMarkers: Record<EdgeId, Mesh>;
+  /** Red markers where the next wave comes from: an edge's strip, or a zone's door. */
+  edgeMarkers: Partial<Record<SpawnFrom, Mesh>>;
   terrain: Terrain;
   /** Animated scenery (lamps, tumbleweeds), if the level has any. */
   decor?: Decor;
@@ -77,7 +79,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   const positions = ground.getVerticesData(VertexBuffer.PositionKind)!;
   const colors: number[] = [];
   // A painted ground is lit as-is (white), and still darkens down in the ravines.
-  const painted = theme.groundStyle === 'cityStreet' || theme.groundStyle === 'arenaFloor';
+  const painted = theme.groundStyle === 'cityStreet' || theme.groundStyle === 'arenaFloor' || theme.groundStyle === 'armyBase';
   const top = painted ? Color3.White() : hex(theme.ground), deep = hex(theme.ravine);
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], z = positions[i + 2];
@@ -101,7 +103,9 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   earth.specularColor = new Color3(0.04, 0.04, 0.05);
   earth.emissiveColor = painted ? new Color3(0.05, 0.035, 0.025) : top.scale(0.12);
   if (painted) {
-    earth.diffuseTexture = theme.groundStyle === 'arenaFloor' ? arenaTexture(scene, map) : streetTexture(scene, map);
+    earth.diffuseTexture = theme.groundStyle === 'arenaFloor' ? arenaTexture(scene, map)
+      : theme.groundStyle === 'armyBase' ? armyBaseTexture(scene, map)
+      : streetTexture(scene, map);
     // Texture covers the whole map: u runs west→east, v south→north.
     const uv = ground.getVerticesData(VertexBuffer.UVKind)!;
     for (let i = 0, v = 0; i < positions.length; i += 3, v += 2) {
@@ -163,7 +167,7 @@ export function createWorld(engine: Engine, level: LevelDef): World {
   danger.emissiveColor = new Color3(1, 0.1, 0.2);
   danger.diffuseColor = Color3.Black();
   danger.alpha = 0.8;
-  const edgeMarkers = {} as Record<EdgeId, Mesh>;
+  const edgeMarkers: World['edgeMarkers'] = {};
   for (const edge of Object.keys(map.edges) as EdgeId[]) {
     const { from, to } = map.edges[edge];
     const inset = 0.4;
@@ -196,10 +200,27 @@ export function createWorld(engine: Engine, level: LevelDef): World {
     edgeMarkers[edge] = strip;
   }
 
+  // A zone's door: a box round the gap in the wall.
+  for (const [id, zone] of Object.entries(map.zones ?? {})) {
+    const { x, z } = zone.door;
+    const across = Math.abs(z) < 1; // a door at the corridor's end faces east–west
+    const hw2 = across ? 1.5 : 2.8, hd2 = across ? zone.area.d / 2 - 0.4 : 1.5;
+    const path = [
+      ...onGround(x - hw2, z - hd2, x + hw2, z - hd2, 0.15), ...onGround(x + hw2, z - hd2, x + hw2, z + hd2, 0.15),
+      ...onGround(x + hw2, z + hd2, x - hw2, z + hd2, 0.15), ...onGround(x - hw2, z + hd2, x - hw2, z - hd2, 0.15),
+    ];
+    const ring = MeshBuilder.CreateTube(`zone-${id}`, { path, radius: 0.25, tessellation: 8 }, scene);
+    ring.material = danger;
+    ring.isPickable = false;
+    ring.setEnabled(false);
+    edgeMarkers[id as SpawnFrom] = ring;
+  }
+
   const decor = theme.decor === 'ruinedCity' ? createRuinedCity(scene, map, terrain, glow, hex(theme.ground))
     : theme.decor === 'graveyard' ? createGraveyard(scene, map, terrain, glow, hex(theme.ground), hex(theme.fog), tombstones)
     : theme.decor === 'jungle' ? createJungle(scene, map, terrain, hex(theme.ground))
     : theme.decor === 'concert' ? createConcert(scene, map, terrain, glow, mats)
+    : theme.decor === 'warZone' ? createWarZone(scene, map, terrain, glow, mats)
     : undefined;
 
   const setLighting = (scale: number, flash: number) => {

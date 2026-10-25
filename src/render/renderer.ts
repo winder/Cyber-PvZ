@@ -1,13 +1,14 @@
 import {
   Color3, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3,
 } from '@babylonjs/core';
-import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type EdgeId, type PlantId, type SoundId, type ZombieId } from '../data/config';
+import { ABILITIES, PLANTS, STRUCTURES, ZOMBIES, type PlantId, type SoundId, type SpawnFrom, type ZombieId } from '../data/config';
 import type { Game, SimEvent } from '../sim/game';
 import { animate, LEAP_SECONDS, UNIT, type BlockCharacter } from './blockModel';
 import { MOSH_MOVES, dancePose, newPose, slamPose, type MoshMove, type Pose } from './dance';
 import { MODELS } from '../models/models';
 import { pickDeath, playDeath, type DeathKind, type DeathStage } from './deaths';
 import { DiscoBall } from './disco';
+import { buildKnife } from './army';
 import { HORSEMAN_GREEN } from './horseman';
 import { RangeRing, RING_GROUP } from './rangeRing';
 import {
@@ -25,6 +26,8 @@ const smoothstep = (x: number) => {
 const GOO = '#b14dff';
 /** Seconds his goo takes to fly from the can to the plants. */
 const GOO_FLIGHT = 0.5;
+/** The green of Dr. Sawbones's syringe, and of his healing. */
+const HEAL = '#5dff7a';
 /** How far below the ground a zombie starts climbing out of its grave (just the tombstone on its head showing). */
 const RISE_DEPTH = 1.8;
 
@@ -42,6 +45,8 @@ interface Tracked {
   disco?: DiscoBall;
   /** Plants: drawn as zombified (purple, and a wall's force field down). */
   turned?: boolean;
+  /** Getting up off a gurney: how long that takes, all told. */
+  riseFor?: number;
   /** In the mosh pit: the move it's doing, and its rock shield. */
   mosh?: { move: MoshMove; rocking: boolean; shield: Mesh; ring: Mesh; t: number };
 }
@@ -248,6 +253,11 @@ export class Renderer {
         const { lift, stride } = animate(character, this.time, { moving: moving && !chewing, chewing, flying: def.flying }, z.id);
         t.visual.update?.(this.time, moving && !chewing);
         this.gesture(z.id, character.joints.armR, character.joints.armL, dt);
+        // The Executioner brings his axe right down over his head.
+        if (chewing && def.weapon === 'axe' && character.joints.armR) {
+          const k = (this.time * 1.6 + z.id * 0.3) % 1;
+          character.joints.armR.rotation.x = -2.8 + Math.pow(k, 3) * 2.6;
+        }
         const pet = t.visual.pet;
         if (pet) {
           pet.tick(dt, z.hp / def.hp);
@@ -265,7 +275,11 @@ export class Renderer {
           root.position.y += ride.lift * UNIT * (def.scale ?? 1);
         }
         if (z.moshing) this.rockOut(t, character, z.rocking > 0, z.id, ground, def.scale ?? 1);
-        if (z.rising > 0 && def.rise) {
+        if (z.rising > 0 && z.grave < 0) {
+          // A body on a morgue gurney sitting up and climbing off it.
+          t.riseFor ??= z.rising;
+          this.getUp(t, z.rising / t.riseFor, ground, z.id, z.facing);
+        } else if (z.rising > 0 && def.rise) {
           // Clawing up out of the grave: shoves up in fits and starts, trembling.
           const k = 1 - z.rising / def.rise.time;
           const up = 1 - Math.pow(1 - k, 2) + Math.sin(k * Math.PI * 4) * 0.04 * (1 - k);
@@ -503,8 +517,24 @@ export class Renderer {
           break;
         case 'structureDestroyed': this.destroyStructure(e.index); break;
         case 'graveRisen': this.dirtSpray(e.x, e.z); break;
-        case 'rocketFired': this.rocket(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight); break;
-        case 'rocketHit': this.explosion(e.x, e.z, e.radius); break;
+        case 'rocketFired':
+          if (e.look === 'knife') this.knife(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight);
+          else if (e.look === 'bullet') this.tracer(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight);
+          else if (e.look === 'grenade') this.grenade(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight);
+          else this.rocket(e.id, e.fromX, e.fromZ, e.toX, e.toZ, e.flight);
+          break;
+        case 'rocketHit':
+          if (e.look === 'rocket' || e.look === 'grenade') this.explosion(e.x, e.z, e.radius);
+          else this.ricochet(e.x, e.z, e.look === 'knife');
+          break;
+        case 'gunSwitched': {
+          const t = this.zombies.get(e.id);
+          t?.visual.arsenal?.show(e.look);
+          const m = t?.visual.muzzle?.getAbsolutePosition();
+          if (m) this.burst(m.x, m.z, '#ffe14d', m.y);
+          break;
+        }
+        case 'healed': this.healPulse(e.id, e.x, e.z, e.radius, e.ids); break;
         case 'summoned': this.summoned(e.id, e.ids); break;
         case 'flameRiff': this.flameRiff(e.id, e.x, e.z, e.toX, e.toZ, e.spread); break;
         case 'zapRiff': this.zapRiff(e.id, e.chain); break;
@@ -586,7 +616,8 @@ export class Renderer {
         if (this.game.phase === 'battle') t += dt;
         ring.scaling.setAll(1.3 - 0.3 * Math.min(1, t / delay));
         ring.rotation.y += dt * 3;
-        return t < delay;
+        // Gone with the battle (the strike might have finished the wave).
+        return t < delay && (this.game.phase === 'battle' || t === 0);
       },
       dispose: () => { ring.dispose(); beam.dispose(); },
     });
@@ -1004,6 +1035,172 @@ export class Renderer {
     });
   }
 
+  /** Where shots leave a shooter: its muzzle, or about chest height over it. */
+  private muzzleOf(id: number, fx: number, fz: number, height = 2.5): Vector3 {
+    const muzzle = this.zombies.get(id)?.visual.muzzle;
+    return muzzle ? muzzle.getAbsolutePosition().clone() : new Vector3(fx, this.world.terrain.terrainHeight(fx, fz) + height, fz);
+  }
+
+  /** A kitchen knife flung end over end, landing (stuck in) at (tx, tz). */
+  private knife(id: number, fx: number, fz: number, tx: number, tz: number, flight: number): void {
+    const from = this.muzzleOf(id, fx, fz);
+    const to = new Vector3(tx, this.world.terrain.terrainHeight(tx, tz) + 0.6, tz);
+    // The free hand does the throwing.
+    this.beckon.set(id, 0.5);
+    const knife = buildKnife(this.world.scene, 'thrownKnife');
+    knife.scaling.setAll(1.6);
+    const arc = 0.8 + Vector3.Distance(from, to) * 0.12;
+    const yawTo = Math.atan2(tx - fx, tz - fz);
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        const k = Math.min(1, t / flight);
+        knife.position.copyFrom(Vector3.Lerp(from, to, k));
+        knife.position.y += Math.sin(k * Math.PI) * arc;
+        knife.rotation.set(t * 18, yawTo, 0); // spinning end over end
+        return k < 1;
+      },
+      dispose: () => knife.dispose(),
+    });
+  }
+
+  /** A burst from the machine gun: a muzzle flash and a streak of tracer. */
+  private tracer(id: number, fx: number, fz: number, tx: number, tz: number, flight: number): void {
+    const from = this.muzzleOf(id, fx, fz);
+    const to = new Vector3(tx + (Math.random() - 0.5) * 0.4, this.world.terrain.terrainHeight(tx, tz) + 0.5, tz + (Math.random() - 0.5) * 0.4);
+    this.recoil.set(id, 0.4);
+    this.burst(from.x, from.z, '#ffe14d', from.y);
+    const len = Vector3.Distance(from, to);
+    const streak = MeshBuilder.CreateCylinder('tracer', { height: Math.min(1.6, len), diameter: 0.07, tessellation: 4 }, this.world.scene);
+    streak.material = this.world.mats.neon('#ffd23a', 2);
+    streak.isPickable = false;
+    const dir = to.subtract(from).normalize();
+    const axis = Vector3.Cross(Vector3.Up(), dir);
+    if (axis.lengthSquared() > 1e-8) streak.rotate(axis.normalize(), Math.acos(Math.max(-1, Math.min(1, Vector3.Dot(Vector3.Up(), dir)))));
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        streak.position.copyFrom(Vector3.Lerp(from, to, Math.min(1, t / flight)));
+        return t < flight;
+      },
+      dispose: () => streak.dispose(),
+    });
+  }
+
+  /** A grenade lobbed high, tumbling, to bounce once and go off where it lands. */
+  private grenade(id: number, fx: number, fz: number, tx: number, tz: number, flight: number): void {
+    const from = this.muzzleOf(id, fx, fz);
+    const ground = this.world.terrain.terrainHeight(tx, tz);
+    const to = new Vector3(tx, ground + 0.15, tz);
+    this.beckon.set(id, 0.6);
+    const nade = MeshBuilder.CreateSphere('grenade', { diameterX: 0.3, diameterY: 0.4, diameterZ: 0.3, segments: 6 }, this.world.scene);
+    nade.material = this.world.mats.dark('#6b7a3a');
+    nade.isPickable = false;
+    const arc = 2.5 + Vector3.Distance(from, to) * 0.3;
+    let t = 0, trail = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        const k = Math.min(1, t / flight);
+        nade.position.copyFrom(Vector3.Lerp(from, to, k));
+        nade.position.y += Math.sin(k * Math.PI) * arc;
+        nade.rotation.x += dt * 9;
+        nade.rotation.z += dt * 6;
+        trail -= dt;
+        if (trail <= 0) {
+          trail = 0.06;
+          this.smokePuff(nade.position, 0.1, 0.4);
+        }
+        return k < 1;
+      },
+      dispose: () => nade.dispose(),
+    });
+  }
+
+  /** A knife thunking in, or a bullet kicking up dust and sparks. */
+  private ricochet(x: number, z: number, knife: boolean): void {
+    const y = this.world.terrain.terrainHeight(x, z);
+    if (knife) {
+      this.burst(x, z, '#e8ecf0', y + 0.6);
+      return;
+    }
+    if (Math.random() < 0.5) this.smokePuff(new Vector3(x, y + 0.2, z), 0.15, 0.4);
+    this.spark(this.sparkAt(x, y + 0.4, z));
+  }
+
+  private sparkNode?: TransformNode;
+  private sparkAt(x: number, y: number, z: number): TransformNode {
+    this.sparkNode ??= new TransformNode('sparkAt', this.world.scene);
+    this.sparkNode.position.set(x, y, z);
+    this.sparkNode.computeWorldMatrix(true);
+    return this.sparkNode;
+  }
+
+  /**
+   * Dr. Sawbones jabs his syringe in the air: a green ring rolls out from
+   * him and a green cross floats up off every zombie he's patched up.
+   */
+  private healPulse(id: number, x: number, z: number, radius: number, ids: number[]): void {
+    const { scene, mats, terrain } = this.world;
+    this.beckon.set(id, 1.2);
+    this.recoil.set(id, 1);
+    const ground = terrain.terrainHeight(x, z);
+    const ring = MeshBuilder.CreateTorus('healRing', { diameter: 2, thickness: 0.2, tessellation: 40 }, scene);
+    ring.material = mats.neon(HEAL, 1.6, 0.85);
+    ring.position.set(x, ground + 0.2, z);
+    ring.isPickable = false;
+    const crosses = ids.flatMap((zid) => {
+      const zb = this.game.zombies.find((o) => o.id === zid);
+      if (!zb) return [];
+      const root = new TransformNode('healCross', scene);
+      for (const [w, h] of [[0.5, 0.16], [0.16, 0.5]]) {
+        const bar = MeshBuilder.CreateBox('healBar', { width: w, height: h, depth: 0.05 }, scene);
+        bar.material = mats.neon(HEAL, 1.8);
+        bar.parent = root;
+        bar.billboardMode = Mesh.BILLBOARDMODE_ALL;
+        bar.isPickable = false;
+      }
+      root.position.set(zb.x, terrain.terrainHeight(zb.x, zb.z) + 1.9, zb.z);
+      this.burst(zb.x, zb.z, HEAL, terrain.terrainHeight(zb.x, zb.z) + 0.9);
+      return [root];
+    });
+    let t = 0;
+    this.effects.push({
+      update: (dt) => {
+        t += dt;
+        ring.scaling.setAll(1 + Math.min(1, t / 0.6) * radius);
+        ring.visibility = Math.max(0, 1 - t / 0.8);
+        for (const c of crosses) {
+          c.position.y += dt * 1.2;
+          c.scaling.setAll(Math.max(0.01, 1 - Math.max(0, t - 0.8) / 0.5));
+        }
+        return t < 1.3;
+      },
+      dispose: () => {
+        ring.dispose();
+        for (const c of crosses) c.dispose();
+      },
+    });
+  }
+
+  /**
+   * Back from the dead on a morgue gurney: lying flat, twitching, then
+   * sitting bolt upright, then swinging down onto its feet. `left` runs 1 → 0.
+   */
+  private getUp(t: Tracked, left: number, ground: number, id: number, facing: number): void {
+    const root = t.visual.root;
+    const k = 1 - left;
+    // Lying along the gurney (head to the west), turning to face the way out as it stands.
+    const turn = smoothstep((k - 0.7) / 0.3);
+    root.rotation.y = yaw(0) + (((yaw(facing) - yaw(0) + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * turn;
+    const GURNEY = 0.85;
+    const sit = Math.min(1, Math.max(0, (k - 0.35) / 0.3)), down = Math.min(1, Math.max(0, (k - 0.7) / 0.3));
+    root.rotation.x = -Math.PI / 2 * (1 - sit * sit) * (1 - down) + (sit < 1 ? 0 : -0.3 * (1 - down));
+    root.position.y = ground + GURNEY * (1 - down * down) + (k < 0.35 ? Math.abs(Math.sin(this.time * 30 + id)) * 0.04 : 0);
+  }
+
   private planDeath(type: ZombieId, by: 'plant' | 'strike', x: number, z: number) {
     const kind = pickDeath(type, by);
     if (kind !== 'shatter') return { type, kind, toCamera: 0 };
@@ -1146,9 +1343,9 @@ export class Renderer {
     if (on) this.aimRing.position.set(x, this.world.terrain.surfaceHeight(x, z) + 0.15, z);
   }
 
-  showEdges(edges: EdgeId[]): void {
+  showEdges(edges: SpawnFrom[]): void {
     for (const [edge, mesh] of Object.entries(this.world.edgeMarkers)) {
-      mesh.setEnabled(edges.includes(edge as EdgeId));
+      mesh.setEnabled(edges.includes(edge as SpawnFrom));
     }
     const pulse = 0.5 + 0.4 * Math.sin(this.time * 4);
     for (const mesh of Object.values(this.world.edgeMarkers)) mesh.visibility = pulse;

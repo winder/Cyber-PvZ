@@ -1,8 +1,9 @@
 import {
   ABILITIES, BOSSES, ECONOMY, LEVELS, MOSH, PLANTS, SCORE, STRUCTURES, ZOMBIES,
-  type AbilityId, type EdgeId, type LevelDef, type MapDef, type PlantDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId, type ZombieId,
+  type AbilityId, type EdgeId, type Gun, type LevelDef, type MapDef, type PlantDef, type PlantId, type SpawnFrom, type SpawnGroup, type StructureId,
+  type ZombieId, type ZoneId,
 } from '../data/config';
-import { inCircle, inSeatRow, onFloor } from './arena';
+import { inCircle, inSeatRow, insideRect, onFloor } from './arena';
 import { CELL, NavGrid, PLANT_BLOCK_PAD } from './nav';
 import { boundingRadius, distanceToPlant, footprintPoints, isRotatable, thicknessAcross } from './shapes';
 
@@ -62,8 +63,11 @@ export interface Zombie {
   rising: number;
   /** Rocketeers and goo sprayers: seconds until it can fire again. */
   reload: number;
-  /** Summoners (and raisers of the dead): seconds until it calls up more zombies. */
+  /** Summoners (and raisers of the dead, and healers): seconds until they next do it. */
   summonIn: number;
+  /** Arsenal carriers: which gun they're holding, and seconds until they switch to the next. */
+  gun: number;
+  gunIn: number;
   /** Seconds left standing still, raising the dead. */
   halted: number;
   /** Riff players: how many riffs so far (they take turns: flame, lightning). */
@@ -86,11 +90,13 @@ export interface Structure {
 
 /** How long a bodyguard follows the normal route round an obstacle before trying the straight way again. */
 const ESCORT_DETOUR = 2;
+/** How much further a bodyguard can have to walk than its leader before it stops cutting straight across and follows the route. */
+const ESCORT_STRAY = 6;
 
 export interface Strike { x: number; z: number; timer: number }
 
-/** A rocket in flight, heading for (x, z). */
-export interface Rocket { x: number; z: number; timer: number; damage: number; radius: number }
+/** A rocket (or knife, bullet, grenade) in flight, heading for (x, z). */
+export interface Rocket { x: number; z: number; timer: number; damage: number; radius: number; look: NonNullable<Gun['look']> }
 
 export type SimEvent =
   /** `turned`: fired by a zombified plant, at a base or a healthy plant. */
@@ -109,9 +115,15 @@ export type SimEvent =
   | { t: 'structureDestroyed'; index: number }
   | { t: 'strikeTargeted'; x: number; z: number; delay: number }
   | { t: 'strikeHit'; x: number; z: number; radius: number }
-  /** `id`: who fired it. Lands at (toX, toZ) after `flight` seconds. */
-  | { t: 'rocketFired'; id: number; fromX: number; fromZ: number; toX: number; toZ: number; flight: number }
-  | { t: 'rocketHit'; x: number; z: number; radius: number }
+  /** `id`: who fired it (a rocket, or a knife, bullet or grenade). Lands at (toX, toZ) after `flight` seconds. */
+  | { t: 'rocketFired'; id: number; fromX: number; fromZ: number; toX: number; toZ: number; flight: number; look: NonNullable<Gun['look']> }
+  | { t: 'rocketHit'; x: number; z: number; radius: number; look: NonNullable<Gun['look']> }
+  /** An arsenal carrier switched to another of its guns. */
+  | { t: 'gunSwitched'; id: number; look: NonNullable<Gun['look']> }
+  /** `id`: who patched them up, from (x, z); `ids`: the zombies it healed. */
+  | { t: 'healed'; id: number; x: number; z: number; radius: number; ids: number[] }
+  /** A zombie came out of a zone: at its spot number `spot`, or (-1) the zone's lair. */
+  | { t: 'zoneSpawn'; zone: ZoneId; id: number; spot: number }
   /** `id`: who called them up; `ids`: the zombies that appeared. */
   | { t: 'summoned'; id: number; ids: number[] }
   /** `id`: who raised them, from where; `rocks`: the tombstones that came up; `ids`: the zombies. */
@@ -176,6 +188,8 @@ export class Game {
   events: SimEvent[] = [];
 
   private nextId = 1;
+  /** Each zone's next spot to bring a zombie out at. */
+  private readonly zoneTurn = new Map<ZoneId, number>();
   /** Zombies the Orbital Laser Strike killed, until they're cleared away. */
   private readonly struckDown = new Set<number>();
   private tick = 0;
@@ -190,9 +204,15 @@ export class Game {
   constructor(seed = 1, readonly level: LevelDef = LEVELS[0], opts: { boss?: ZombieId } = {}) {
     // Each boss stands in for any boss in the level's waves.
     const bosses = level.bosses ?? BOSSES;
-    this.boss = opts.boss ?? bosses[Math.floor(mulberry32(seed ^ 0x5eed)() * bosses.length)];
     this.map = level.map;
-    this.waves = level.waves.map((wave) => wave.map((g) => (ZOMBIES[g.zombie].boss ? { ...g, zombie: this.boss } : g)));
+    if (level.keepBosses) {
+      // Every boss as written; "the" boss is the final wave's.
+      this.waves = level.waves;
+      this.boss = [...level.waves].reverse().flat().find((g) => ZOMBIES[g.zombie].boss)?.zombie ?? bosses[0];
+    } else {
+      this.boss = opts.boss ?? bosses[Math.floor(mulberry32(seed ^ 0x5eed)() * bosses.length)];
+      this.waves = level.waves.map((wave) => wave.map((g) => (ZOMBIES[g.zombie].boss ? { ...g, zombie: this.boss } : g)));
+    }
     this.totalWaves = level.waves.length;
     this.rand = mulberry32(seed);
     this.nav = new NavGrid(this.map.width, this.map.depth);
@@ -220,6 +240,9 @@ export class Game {
     const hw = this.map.width / 2, hd = this.map.depth / 2;
     if (pts.some(([px, pz]) => Math.abs(px) > hw || Math.abs(pz) > hd || !onFloor(this.map, px, pz))) {
       return { ok: false, reason: 'Too close to the edge.' };
+    }
+    for (const zone of Object.values(this.map.zones ?? {})) {
+      if (pts.some(([px, pz]) => insideRect(zone.area, px, pz))) return { ok: false, reason: `That’s the ${zone.name}! Plant in the corridor.` };
     }
     const pit = this.map.moshPit;
     if (pit && pts.some(([px, pz]) => inCircle(pit, px, pz))) {
@@ -415,6 +438,12 @@ export class Game {
       if (risen) return risen;
       edge = (Object.keys(this.map.edges) as EdgeId[])[0]; // no graves left: walk in instead
     }
+    if (!(edge in this.map.edges)) return this.spawnInZone(type, edge as ZoneId);
+    return this.walkIn(type, edge as EdgeId);
+  }
+
+  /** In from the edge of the map (out of an alley mouth, if it has them). */
+  private walkIn(type: ZombieId, edge: EdgeId): Zombie {
     const range = this.map.edges[edge];
     const hw = this.map.width / 2 - 0.5, hd = this.map.depth / 2 - 0.5;
     let x = 0, z = 0;
@@ -430,7 +459,35 @@ export class Game {
       else { x = t; z = -hd; }
       if (!this.nav.blocked[this.nav.cellOf(x, z)]) break;
     }
-    const zombie = this.addZombie(type, x, z);
+    return this.arrive(this.addZombie(type, x, z));
+  }
+
+  /**
+   * Out of a zone: a boss at its lair, anyone else at its next spot (each in
+   * turn), lying there a while first if the zone's dead are getting up.
+   */
+  private spawnInZone(type: ZombieId, id: ZoneId): Zombie {
+    const zone = this.map.zones?.[id];
+    if (!zone) throw new Error(`No zone ${id} on this map`);
+    const boss = !!ZOMBIES[type].boss;
+    let spot = -1;
+    if (!boss) {
+      spot = this.zoneTurn.get(id) ?? Math.floor(this.rand() * zone.spots.length);
+      this.zoneTurn.set(id, (spot + 1) % zone.spots.length);
+    }
+    const at = boss ? zone.lair : zone.spots[spot];
+    const zombie = this.addZombie(type, at.x, at.z);
+    // Facing the way out.
+    zombie.facing = Math.atan2(zone.door.z - at.z, zone.door.x - at.x);
+    if (zone.rise && !boss) zombie.rising = zone.rise;
+    this.events.push({ t: 'zoneSpawn', zone: id, id: zombie.id, spot });
+    return this.arrive(zombie);
+  }
+
+  /** A zombie's just come in: announce a boss, and bring on its bodyguards. */
+  private arrive(zombie: Zombie): Zombie {
+    const type = zombie.type;
+    const hw = this.map.width / 2 - 0.5, hd = this.map.depth / 2 - 0.5;
     if (ZOMBIES[type].boss) this.events.push({ t: 'bossSpawn', type });
     // Bodyguards appear around it, already in formation.
     const guards = ZOMBIES[type].guards;
@@ -452,7 +509,8 @@ export class Game {
       slowTimer: 0, slowFactor: 1, facing: Math.PI, attacking: null, target: null, wanderBelow: 0, visited: [],
       leader: null, slot: 0, detour: 0, grave: -1, rising: 0,
       reload: ZOMBIES[type].goo?.first ?? ZOMBIES[type].riff?.first ?? 0,
-      summonIn: ZOMBIES[type].summon?.first ?? ZOMBIES[type].raiseDead?.first ?? 0, halted: 0,
+      summonIn: ZOMBIES[type].summon?.first ?? ZOMBIES[type].raiseDead?.first ?? ZOMBIES[type].heal?.first ?? 0, halted: 0,
+      gun: 0, gunIn: ZOMBIES[type].arsenal?.every ?? 0,
       riffs: 0, moshing: false, rocking: 0, surging: 0,
     };
     this.zombies.push(zombie);
@@ -501,7 +559,8 @@ export class Game {
   private markObstacles(): void {
     this.nav.blocked.fill(0);
     for (const [i, r] of this.map.rocks.entries()) if (!this.risen.has(i)) this.nav.addRock(r);
-    for (const c of this.map.ravines) this.nav.addRavine(c);
+    for (const c of this.map.ravines) this.nav.addRect(c);
+    for (const b of this.map.barriers ?? []) this.nav.addRect(b);
     if (this.map.fan) this.nav.blockWhere((x, z) => !onFloor(this.map, x, z));
     const seats = this.map.seats ?? [];
     if (seats.length) this.nav.blockWhere((x, z) => seats.some((s) => inSeatRow(s, x, z)));
@@ -693,7 +752,8 @@ export class Game {
         continue;
       }
       if (def.raiseDead && this.raiseDead(zb)) continue;
-      if (def.rockets) this.fireRocket(zb);
+      if (def.rockets || def.arsenal) this.fireRocket(zb);
+      if (def.heal) this.healAround(zb);
       if (def.summon) this.summonCrew(zb);
       if (def.goo) this.sprayGoo(zb);
       if (def.riff) this.playRiff(zb);
@@ -747,35 +807,69 @@ export class Game {
     this.separateZombies();
   }
 
-  /** Rocketeers fire at the nearest plant in range (or a base, if there's none), walking as they go. */
+  /** The gun it's holding: its only one, or (an arsenal) whichever it's switched to. */
+  private gunOf(zb: Zombie): Gun {
+    const def = ZOMBIES[zb.type];
+    return def.arsenal ? def.arsenal.guns[zb.gun] : def.rockets!;
+  }
+
+  /**
+   * Rocketeers (and knife throwers, gunners, grenadiers) fire at the nearest
+   * plants in range (a volley at several), or a base if there are none,
+   * walking as they go. Arsenal carriers switch guns every so often.
+   */
   private fireRocket(zb: Zombie): void {
-    const r = ZOMBIES[zb.type].rockets!;
-    zb.reload -= DT;
-    if (zb.reload > 0) return;
-    let target: { x: number; z: number } | undefined;
-    let best = r.range;
-    for (const p of this.plants) {
-      if (p.hp <= 0 || p.zombified > 0) continue;
-      const d = distanceToPlant(p, zb.x, zb.z);
-      if (d <= best) {
-        best = d;
-        target = p;
+    const arsenal = ZOMBIES[zb.type].arsenal;
+    if (arsenal) {
+      zb.gunIn -= DT;
+      if (zb.gunIn <= 0) {
+        zb.gunIn = arsenal.every;
+        zb.gun = (zb.gun + 1) % arsenal.guns.length;
+        zb.reload = Math.max(zb.reload, 0.8); // a moment to swap
+        this.events.push({ t: 'gunSwitched', id: zb.id, look: arsenal.guns[zb.gun].look ?? 'rocket' });
       }
     }
-    if (!target) {
+    const r = this.gunOf(zb);
+    zb.reload -= DT;
+    if (zb.reload > 0) return;
+    const near = this.plants
+      .filter((p) => p.hp > 0 && p.zombified <= 0)
+      .map((p) => ({ p, d: distanceToPlant(p, zb.x, zb.z) }))
+      .filter((n) => n.d <= r.range)
+      .sort((a, b) => a.d - b.d);
+    let targets: { x: number; z: number }[] = near.slice(0, r.volley ?? 1).map((n) => n.p);
+    if (targets.length === 0) {
       const s = this.nearestStructure(zb.x, zb.z);
       if (s && Math.hypot(s.x - zb.x, s.z - zb.z) - STRUCTURES[s.type].radius <= r.range) {
         // Aim at the near wall, not the middle.
         const d = Math.hypot(s.x - zb.x, s.z - zb.z) || 1;
         const k = (d - STRUCTURES[s.type].radius * 0.7) / d;
-        target = { x: zb.x + (s.x - zb.x) * k, z: zb.z + (s.z - zb.z) * k };
+        targets = [{ x: zb.x + (s.x - zb.x) * k, z: zb.z + (s.z - zb.z) * k }];
       }
     }
-    if (!target) return;
+    if (targets.length === 0) return;
     zb.reload = r.every;
-    const flight = Math.max(0.3, Math.hypot(target.x - zb.x, target.z - zb.z) / r.speed);
-    this.rockets.push({ x: target.x, z: target.z, timer: flight, damage: r.damage, radius: r.radius });
-    this.events.push({ t: 'rocketFired', id: zb.id, fromX: zb.x, fromZ: zb.z, toX: target.x, toZ: target.z, flight });
+    const look = r.look ?? 'rocket';
+    for (const target of targets) {
+      const flight = Math.max(look === 'bullet' ? 0.1 : 0.3, Math.hypot(target.x - zb.x, target.z - zb.z) / r.speed);
+      this.rockets.push({ x: target.x, z: target.z, timer: flight, damage: r.damage, radius: r.radius, look });
+      this.events.push({ t: 'rocketFired', id: zb.id, fromX: zb.x, fromZ: zb.z, toX: target.x, toZ: target.z, flight, look });
+    }
+  }
+
+  /** Healers patch up every other zombie round them, every so often (once someone's hurt). */
+  private healAround(zb: Zombie): void {
+    const h = ZOMBIES[zb.type].heal!;
+    zb.summonIn -= DT;
+    if (zb.summonIn > 0) return;
+    const hurt = this.zombies.filter((o) => o !== zb && o.hp > 0 && o.hp < ZOMBIES[o.type].hp && Math.hypot(o.x - zb.x, o.z - zb.z) <= h.radius);
+    if (hurt.length === 0) {
+      zb.summonIn = 1;
+      return;
+    }
+    zb.summonIn = h.every;
+    for (const o of hurt) o.hp = Math.min(ZOMBIES[o.type].hp, o.hp + ZOMBIES[o.type].hp * h.amount);
+    this.events.push({ t: 'healed', id: zb.id, x: zb.x, z: zb.z, radius: h.radius, ids: hurt.map((o) => o.id) });
   }
 
   /**
@@ -865,7 +959,7 @@ export class Game {
       for (const s of this.structures) {
         if (s.alive && Math.hypot(s.x - r.x, s.z - r.z) <= STRUCTURES[s.type].radius + r.radius) this.damageStructure(s, r.damage);
       }
-      this.events.push({ t: 'rocketHit', x: r.x, z: r.z, radius: r.radius });
+      this.events.push({ t: 'rocketHit', x: r.x, z: r.z, radius: r.radius, look: r.look });
       this.rockets.splice(i, 1);
     }
   }
@@ -975,6 +1069,10 @@ export class Game {
     }
     const step = Math.min(dist, speed * DT);
     const nx = zb.x + (dx / dist) * step, nz = zb.z + (dz / dist) * step;
+    // Cut off (on the far side of a wall, say): its walk is much longer than
+    // the leader's, so take the normal route to catch up.
+    const behind = this.nav.dist[this.nav.cellOf(zb.x, zb.z)] - this.nav.dist[this.nav.cellOf(leader.x, leader.z)];
+    if (behind > ESCORT_STRAY) zb.detour = Math.max(zb.detour, DT);
     if (zb.detour > 0) zb.detour -= DT;
     else if (!this.nav.blocked[this.nav.cellOf(nx, nz)]) {
       zb.x = nx;

@@ -21,10 +21,11 @@ Each level button on the title screen shows your high score and how many
 times you've played it (remembered in that browser only).
 
 Choose a level on the title screen, or link straight to one:
-`?level=1` (Neon Grid) or `?level=2` (Rust Corridor), up to `?level=5`
-(Hellfire Arena, a rock concert). It combines with debug mode, e.g.
-`?level=2&debug`. Pick the final boss with `?boss=zomwes`, `captain`,
-`gardener`, `satan` or `horseman` (the Cyber Cemetery's Headless Horseman).
+`?level=1` (Neon Grid) or `?level=2` (Rust Corridor), up to `?level=6`
+(War Zone, an army base with a boss in every zone). It combines with debug
+mode, e.g. `?level=2&debug`. Pick the final boss with `?boss=zomwes`,
+`captain`, `gardener`, `satan` or `horseman` (the Cyber Cemetery's Headless
+Horseman). The War Zone always brings all four of its own bosses.
 
 ## Controls
 

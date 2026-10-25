@@ -198,7 +198,10 @@ export class Spectacle {
             : guards ? `with ${guards.count} ${ZOMBIES[guards.zombie].name}s`
             : def.raiseDead ? 'and the dead rise to ride with him'
             : def.pet ? `and his trusty ${def.pet}`
-            : def.goo ? 'and your plants are thirsty' : '',
+            : def.goo ? 'and your plants are thirsty'
+            : def.rockets?.look === 'knife' ? 'and he’s sharpened his knives'
+            : def.arsenal ? 'armed to the teeth'
+            : def.heal ? 'the doctor will see you now' : '',
           );
           // It smashes its way in.
           this.crumble(boss.x, boss.z, 40);

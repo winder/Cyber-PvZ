@@ -18,7 +18,9 @@ export type PartRole =
   | 'footR' | 'footL' | 'driverBody' | 'driverHead'
   | 'driverArmR' | 'driverArmL' | 'leverR' | 'leverL'
   | 'gut' | 'tail' | 'tailTip';
-export type ModelId = 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener' | 'satan' | 'biker' | 'horseman';
+export type ModelId =
+  | 'humanoid' | 'jetpackHumanoid' | 'westbot' | 'guardian' | 'captain' | 'gardener' | 'satan' | 'biker' | 'horseman'
+  | 'chef' | 'executioner' | 'gunner' | 'surgeon';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -67,6 +69,16 @@ export const HORSE_SADDLE = 25;
 
 const ARMS_FORWARD: [number, number, number] = [-Math.PI / 2, 0, 0];
 
+/** Broad and armored, with huge arms that bulge at the shoulder (the Captain's build). */
+const BRUTE_PARTS: PartDef[] = [
+  { role: 'head', label: 'Head', size: [8, 8, 8], uv: [0, 0], pivot: [0, 23, 0], offset: [0, 4, 0] },
+  { role: 'body', label: 'Body', size: [10, 12, 6], uv: [32, 0], pivot: [0, 23, 0], offset: [0, -6, 0] },
+  { role: 'armR', label: 'Right arm', size: [5, 13, 5], taper: 1.35, uv: [0, 18], pivot: [8, 21.5, 0], offset: [0, -4.5, 0] },
+  { role: 'armL', label: 'Left arm', size: [5, 13, 5], taper: 1.35, uv: [20, 18], pivot: [-8, 21.5, 0], offset: [0, -4.5, 0] },
+  { role: 'legR', label: 'Right leg', size: [5, 11, 5], uv: [0, 38], pivot: [2.7, 11, 0], offset: [0, -5.5, 0] },
+  { role: 'legL', label: 'Left leg', size: [5, 11, 5], uv: [20, 38], pivot: [-2.7, 11, 0], offset: [0, -5.5, 0] },
+];
+
 const HUMANOID_PARTS: PartDef[] = [
   { role: 'head', label: 'Head', size: [8, 8, 8], uv: [0, 0], pivot: [0, 24, 0], offset: [0, 4, 0] },
   { role: 'body', label: 'Body', size: [8, 12, 4], uv: [16, 16], pivot: [0, 24, 0], offset: [0, -6, 0] },
@@ -99,6 +111,16 @@ export const MODELS: Record<ModelId, ModelDef> = {
       : p.role === 'armL' ? { ...p, rest: [-1.1, 0, 0.6] as [number, number, number] }
       : p),
   },
+  // Dr. Sawbones: a lanky humanoid holding his giant syringe up in his
+  // right hand, the left reaching out. Same skin layout as the humanoid.
+  surgeon: {
+    label: 'Dr. Sawbones',
+    walkSwing: 0.5,
+    parts: HUMANOID_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-0.9, 0, 0.15] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-1.3, 0, -0.1] as [number, number, number] }
+      : p),
+  },
   // The Necro-Gardener: a lanky humanoid. His right arm (a watering can at the
   // end) is held out to pour; the left hangs loose. Same skin layout as the
   // humanoid.
@@ -116,13 +138,45 @@ export const MODELS: Record<ModelId, ModelDef> = {
   captain: {
     label: 'Ship Captain',
     walkSwing: 0.45,
+    parts: BRUTE_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-Math.PI / 2, 0, 0] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-0.15, 0, -0.18] as [number, number, number] }
+      : p),
+  },
+  // The Executioner: the Captain's build. His right arm holds the axe up
+  // over his shoulder; the left hangs ready. Packed into a 64-unit page.
+  executioner: {
+    label: 'Executioner',
+    walkSwing: 0.4,
+    parts: BRUTE_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-0.55, 0, 0.2] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-0.3, 0, -0.25] as [number, number, number] }
+      : p),
+  },
+  // Sergeant Rampage: the Captain's build again, both arms forward to hold
+  // whichever gun he's got. Packed into a 64-unit page.
+  gunner: {
+    label: 'Sergeant Rampage',
+    walkSwing: 0.4,
+    parts: BRUTE_PARTS.map((p) =>
+      p.role === 'armR' ? { ...p, rest: [-1.35, 0, 0.12] as [number, number, number] }
+      : p.role === 'armL' ? { ...p, rest: [-1.3, -0.45, -0.45] as [number, number, number] }
+      : p),
+  },
+  // Chef Cleaver: a huge round gut over short legs, big arms. His right
+  // hand holds the cleaver up; the left is out, ready to throw.
+  chef: {
+    label: 'Chef Cleaver',
+    skinUnits: 128,
+    walkSwing: 0.35,
     parts: [
-      { role: 'head', label: 'Head', size: [8, 8, 8], uv: [0, 0], pivot: [0, 23, 0], offset: [0, 4, 0] },
-      { role: 'body', label: 'Body', size: [10, 12, 6], uv: [32, 0], pivot: [0, 23, 0], offset: [0, -6, 0] },
-      { role: 'armR', label: 'Right arm', size: [5, 13, 5], taper: 1.35, uv: [0, 18], pivot: [8, 21.5, 0], offset: [0, -4.5, 0], rest: [-Math.PI / 2, 0, 0] },
-      { role: 'armL', label: 'Left arm', size: [5, 13, 5], taper: 1.35, uv: [20, 18], pivot: [-8, 21.5, 0], offset: [0, -4.5, 0], rest: [-0.15, 0, -0.18] },
-      { role: 'legR', label: 'Right leg', size: [5, 11, 5], uv: [0, 38], pivot: [2.7, 11, 0], offset: [0, -5.5, 0] },
-      { role: 'legL', label: 'Left leg', size: [5, 11, 5], uv: [20, 38], pivot: [-2.7, 11, 0], offset: [0, -5.5, 0] },
+      { role: 'body', label: 'Body', size: [11, 10, 7], uv: [32, 0], pivot: [0, 22, 0], offset: [0, -5, 0] },
+      { role: 'head', label: 'Head', size: [8, 8, 8], uv: [0, 0], pivot: [0, 22, 0], offset: [0, 4, 0] },
+      { role: 'gut', label: 'Gut', size: [12, 9, 6], uv: [70, 0], pivot: [0, 15, 3.5], parent: 'body', offset: [0, 0, 1.5] },
+      { role: 'armR', label: 'Right arm', size: [5, 11, 5], uv: [0, 20], pivot: [8, 21, 0], offset: [0, -4.5, 0], rest: [-0.5, 0, 0.35] },
+      { role: 'armL', label: 'Left arm', size: [5, 11, 5], uv: [24, 20], pivot: [-8, 21, 0], offset: [0, -4.5, 0], rest: [-0.9, 0, -0.5] },
+      { role: 'legR', label: 'Right leg', size: [5, 9, 5], uv: [48, 20], pivot: [3, 9, 0], offset: [0, -4.5, 0] },
+      { role: 'legL', label: 'Left leg', size: [5, 9, 5], uv: [72, 20], pivot: [-3, 9, 0], offset: [0, -4.5, 0] },
     ],
   },
   // Satan: a big red gut on goat legs (thighs forward, shins sweeping back

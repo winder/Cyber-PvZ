@@ -313,6 +313,10 @@ function recordResult(): void {
   result = `<span class="result">${score} · ${best}</span>`;
 }
 
+/** Zones whose news (bodies rising, a jailbreak) has been told this wave. */
+const zoneNews = new Set<string>();
+const GUN_TOASTS = { bullet: '🔫', rocket: '🚀', grenade: '💣', knife: '🔪' } as const;
+
 /** Sounds, messages and screens triggered by things happening in the game. */
 function react(events: SimEvent[]): void {
   for (const e of events) {
@@ -336,8 +340,33 @@ function react(events: SimEvent[]): void {
         if (renderer.discoBoss) hud.toast(`🪩 ${ZOMBIES[e.type].name} has DISCO FEVER! 🪩`, 4000);
         break;
       case 'stomp': audio.play('stomp'); break;
-      case 'rocketFired': audio.play('rocket'); break;
-      case 'rocketHit': audio.play('rocketBoom'); break;
+      case 'rocketFired':
+        audio.play(e.look === 'knife' ? 'knife' : e.look === 'bullet' ? 'machineGun' : e.look === 'grenade' ? 'grenade' : 'rocket');
+        break;
+      case 'rocketHit': if (e.look === 'rocket' || e.look === 'grenade') audio.play('rocketBoom'); break;
+      case 'gunSwitched': {
+        audio.play('gunSwitch');
+        const who = ZOMBIES[game.zombies.find((z) => z.id === e.id)?.type ?? 'gunner'].name;
+        hud.toast(`${GUN_TOASTS[e.look]} ${who} switches to his ${e.look === 'bullet' ? 'MACHINE GUN' : e.look === 'rocket' ? 'BAZOOKA' : 'GRENADES'}!`, 2200);
+        break;
+      }
+      case 'healed':
+        audio.play('heal');
+        hud.toast(`💉 ${ZOMBIES[game.zombies.find((z) => z.id === e.id)?.type ?? 'surgeon'].name} patches up ${e.ids.length} zombie${e.ids.length === 1 ? '' : 's'}!`, 2200);
+        break;
+      case 'zoneSpawn':
+        // The first body to get up, and the first prisoner out, each wave.
+        if (e.spot >= 0 && e.zone === 'hospital' && !zoneNews.has('hospital')) {
+          zoneNews.add('hospital');
+          audio.play('bodiesRise');
+          hud.toast('🧟 The dead in the morgue are getting up!', 3000);
+        }
+        if (e.spot >= 0 && e.zone === 'jail' && !zoneNews.has('jail')) {
+          zoneNews.add('jail');
+          audio.play('jailbreak');
+          hud.toast('🚨 JAILBREAK! The prisoners are out! 🚨', 3000);
+        }
+        break;
       case 'summoned': audio.play('summon'); break;
       case 'deadRaised':
         audio.play('raiseDead');
@@ -380,6 +409,7 @@ function react(events: SimEvent[]): void {
         break;
       }
       case 'waveStart':
+        zoneNews.clear();
         // A play counts once the first wave is under way, not for looking at the title screen.
         if (!playCounted && !debug.on) {
           countPlay(level.id);
@@ -482,7 +512,7 @@ engine.runRenderLoop(() => {
   camera.update(dt);
   renderer.sync(ui.paused ? 0 : dt * GAME_SPEED * ui.speed * spectacle.timeScale);
   renderer.setSelected(game.phase === 'build' ? ui.selectedPlant : null);
-  renderer.showEdges(game.phase === 'build' ? game.wavePreview().flatMap((l) => (l.edge === 'graves' ? [] : [l.edge])) : []);
+  renderer.showEdges(game.phase === 'build' ? game.wavePreview().map((l) => l.edge) : []);
   if (game.phase !== 'battle' && ui.aiming) {
     ui.aiming = null;
     renderer.setAim(false);

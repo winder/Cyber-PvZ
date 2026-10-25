@@ -98,6 +98,18 @@ export class Minimap {
       ctx.strokeRect(X(r.x - r.w / 2), Z(r.z + r.d / 2), r.w * s, r.d * s);
     }
 
+    // Zones: a tinted patch each. Then walls and furniture standing on the ground.
+    ctx.fillStyle = 'rgba(255, 200, 60, 0.12)';
+    for (const z of Object.values(map.zones ?? {})) {
+      ctx.fillRect(X(z.area.x - z.area.w / 2), Z(z.area.z + z.area.d / 2), z.area.w * s, z.area.d * s);
+    }
+    for (const b of map.barriers ?? []) {
+      ctx.fillStyle = b.look === 'grounds' ? 'rgba(0, 0, 0, 0.45)'
+        : b.look === 'brickWall' || b.look === 'sandbags' || b.look === 'fence' ? 'rgba(230, 190, 120, 0.9)'
+        : 'rgba(150, 150, 140, 0.7)';
+      ctx.fillRect(X(b.x - b.w / 2), Z(b.z + b.d / 2), Math.max(dpr, b.w * s), Math.max(dpr, b.d * s));
+    }
+
     for (const st of this.game.structures) {
       const def = STRUCTURES[st.type];
       ctx.fillStyle = st.alive ? def.color : '#333';

@@ -8,6 +8,7 @@ import { animate, assemble, buildPartMesh, skinMaterial, UNIT, type BlockCharact
 import { buildHair } from '../render/hair';
 import { rockExtras } from '../render/rock';
 import { attachWeapon, buildGlassHelmet } from '../render/weapons';
+import { armyExtras } from '../render/army';
 import { skinUnits } from '../models/models';
 import { clearCustomSkin, getCustomSkin, saveCustomSkin } from '../skins';
 import { faceAt, faceLabel, layoutFaces, mirrorPixel, type FaceInfo } from './faces';
@@ -349,9 +350,11 @@ function buildCharacter(id: ZombieId): void {
     helmet.parent = character.joints.head;
     extras.push(...helmet.getChildMeshes());
   }
-  // Horns, the tail's spade, a chopper: also for show.
+  // Horns, the tail's spade, a chopper, hats: also for show.
   const before = new Set(scene.meshes);
   rockExtras(scene, character, ZOMBIES[id], 'extra');
+  // Hats and a ball and chain. (No handcuffs: the arms stay out of the way for painting.)
+  armyExtras(scene, character, ZOMBIES[id], 'extra', false)?.(0, false);
   for (const m of scene.meshes) if (!before.has(m)) extras.push(m);
   const kind = ZOMBIES[id].hair;
   if (kind && character.joints.head) {

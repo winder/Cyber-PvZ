@@ -5,6 +5,8 @@ import { MODELS } from '../models/models';
 import { UNIT, type BlockCharacter } from './blockModel';
 import { buildSword } from './horseman';
 import { buildGuitar, buildRoadCase } from './rock';
+import { buildArsenal, buildAxe, buildCleaver, buildSyringe } from './army';
+import type { ZombieDef } from '../data/config';
 
 // Weapons held by blocky characters. Built in skin units, like the models.
 
@@ -259,7 +261,7 @@ export function buildRiotShield(scene: Scene, name: string): TransformNode {
   return root;
 }
 
-type WeaponKind = 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield' | 'sword';
+export type WeaponKind = NonNullable<ZombieDef['weapon']>;
 
 const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode> = {
   scythe: buildScythe,
@@ -269,7 +271,19 @@ const WEAPONS: Record<WeaponKind, (scene: Scene, name: string) => TransformNode>
   roadCase: buildRoadCase,
   riotShield: buildRiotShield,
   sword: buildSword,
+  cleaver: buildCleaver,
+  axe: buildAxe,
+  syringe: buildSyringe,
+  arsenal: (scene, name) => {
+    // The renderer switches guns through it (see Visual.arsenal).
+    const a = buildArsenal(scene, name);
+    a.root.metadata = { arsenal: a };
+    return a.root;
+  },
 };
+
+/** How far each hand-held weapon tips forward from upright in the hand (radians). */
+const TIP: Partial<Record<WeaponKind, number>> = { cleaver: 0, axe: -0.5, syringe: 0.7, arsenal: Math.PI / 2 };
 
 /**
  * Put a weapon in the character's right hand (or, for a launcher or watering
@@ -304,10 +318,12 @@ export function attachWeapon(scene: Scene, character: BlockCharacter, kind: Weap
     weapon.position.set(0, (armDef.offset[1] - armDef.size[1] / 2 + 4) * UNIT, 0);
     return weapon;
   }
-  // In the hand at the end of the arm, held upright when the arm is at rest.
+  // In the hand at the end of the arm, held upright when the arm is at rest
+  // (guns pointing forward, the axe back over the shoulder).
   const handY = armDef.offset[1] - armDef.size[1] / 2 + 1;
   weapon.position.set(0, handY * UNIT, 0);
-  weapon.rotation.x = -(armDef.rest?.[0] ?? 0);
+  weapon.rotation.x = -(armDef.rest?.[0] ?? 0) + (TIP[kind] ?? 0);
+  if (TIP[kind] !== undefined) weapon.rotation.z = -(armDef.rest?.[2] ?? 0);
   return weapon;
 }
 

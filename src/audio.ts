@@ -170,12 +170,35 @@ const SYNTHS: Record<SoundId, Synth> = {
     [0.1, tone('triangle', 220, 330, 0.9, 0.06)], [0.1, tone('triangle', 262, 392, 0.9, 0.05)],
     [0.1, tone('triangle', 311, 466, 0.9, 0.05)],
   ),
+  // Knives whistling through the air.
+  knife: seq([0, whoosh(0.25, 0.25, 1800, 5000)], [0.02, tone('triangle', 2400, 1600, 0.12, 0.03)]),
+  // A short rattle of shots.
+  machineGun: seq([0, noise(0.05, 0.35, 2600)], [0.06, noise(0.05, 0.3, 2400)], [0.12, noise(0.05, 0.3, 2600)]),
+  // A hollow thunk as it's lobbed.
+  grenade: seq([0, tone('sine', 180, 90, 0.12, 0.2)], [0, noise(0.06, 0.15, 900)]),
+  // A twinkly rising chime as the wounded get patched up.
+  heal: seq([0, tone('sine', 660, 990, 0.25, 0.07)], [0.12, tone('sine', 880, 1320, 0.3, 0.06)], [0.24, tone('sine', 1100, 1650, 0.35, 0.05)]),
+  // The jail's alarm wails, and the doors crash open.
+  jailbreak: seq(
+    [0, noise(0.5, 0.4, 900)],
+    [0, tone('square', 620, 880, 0.4, 0.05)], [0.4, tone('square', 880, 620, 0.4, 0.05)],
+    [0.8, tone('square', 620, 880, 0.4, 0.05)], [1.2, tone('square', 880, 620, 0.4, 0.05)],
+  ),
+  // A deep groan as the dead sit up.
+  bodiesRise: seq([0, tone('sawtooth', 90, 60, 1.2, 0.08)], [0.2, tone('sawtooth', 120, 70, 1.0, 0.05)], [0, noise(1.0, 0.1, 300)]),
+  // Reveille on the bugle.
+  bugle: seq(
+    [0, tone('triangle', 392, 392, 0.14, 0.09)], [0.16, tone('triangle', 523, 523, 0.14, 0.09)],
+    [0.32, tone('triangle', 659, 659, 0.14, 0.09)], [0.48, tone('triangle', 784, 784, 0.5, 0.09)],
+  ),
+  // Click-clack: a new gun, cocked.
+  gunSwitch: seq([0, noise(0.03, 0.3, 3000)], [0.12, noise(0.04, 0.35, 2000)]),
   click: tone('square', 900, 900, 0.03, 0.04),
   error: tone('square', 160, 120, 0.15, 0.08),
 };
 
 /** Minimum seconds between repeats so a swarm of lasers doesn't deafen anyone. */
-const THROTTLE: Partial<Record<SoundId, number>> = { engine: 0.6, zap: 0.1, rocketBoom: 0.15, laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4, thunder: 0.8, crumble: 0.5 };
+const THROTTLE: Partial<Record<SoundId, number>> = { machineGun: 0.2, knife: 0.15, grenade: 0.1, engine: 0.6, zap: 0.1, rocketBoom: 0.15, laser: 0.06, cryo: 0.08, chomp: 0.15, zombieDie: 0.05, stomp: 0.4, thunder: 0.8, crumble: 0.5 };
 
 export class Audio {
   private ctx: AudioContext | null = null;

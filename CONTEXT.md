@@ -8,8 +8,8 @@ behind these terms are in [docs/adr/](docs/adr/).
 
 **Level** — One playable stage: a **Map**, a **Theme** and a list of
 **Waves**. Picked on the title screen or with `?level=` in the address.
-Currently *Neon Grid* (1), *Rust Corridor* (2), *Cyber Cemetery* (3) and
-*Crash Jungle* (4).
+Currently *Neon Grid* (1), *Rust Corridor* (2), *Cyber Cemetery* (3),
+*Crash Jungle* (4), *Hellfire Arena* (5) and *War Zone* (6).
 Code: `LevelDef`.
 
 **Wave** — One round of zombies. A level has 5; the last is the **final
@@ -107,6 +107,21 @@ crowd-surf) and **surging** (super speed). Nothing can be planted in it.
 Code: `MapDef.moshPit`, `MOSH`, `Zombie.moshing/rocking/surging`; the moves
 are looks only (`src/render/dance.ts`).
 
+**Zone** — One of the War Zone's walled-off areas off the corridor (Mess
+Hall, Armory, Training Field, Jail, Hospital). Zombies come *out of* a zone
+instead of in from an edge: a boss at the zone's **Lair**, anyone else at its
+**Spots** in turn (a body on a gurney, a jail cell), then out through its
+**Door**. Nothing can be planted in a zone. Code: `MapDef.zones`, `ZoneDef`,
+event `zoneSpawn`. *Avoid:* "room", "section".
+
+**Barrier** — Something solid standing on the ground: a brick wall topped
+with sandbags, a **Trench** (a line of sandbags with barbed wire, standing
+across the corridor to make zombies weave), a fence, or furniture and
+vehicles (bunks, tables, the tank). To the rules it's a rectangle nothing gets
+through, like a ravine; its `look` is for the scenery. **Grounds** are
+fenced-off land (headquarters, the obstacle course) filled with scenery.
+Code: `MapDef.barriers`, `Barrier`.
+
 **Edge** — A side of the map zombies enter from (north, south, east, west),
 with a spawn range along it. **Alleys** narrow an edge to a few spawn points
 (Rust Corridor).
@@ -197,6 +212,33 @@ events `flameRiff` / `zapRiff`.
 pit it pops wheelies. **Roadie Zombie** — Slow and armored, carrying a road
 case in front like a shield.
 
+**War Zone bosses** — The War Zone keeps every boss in its waves as
+written, one to a zone, a wave each from wave 2 (`LevelDef.keepBosses`):
+- **Chef Cleaver** (Mess Hall) — fat, in a tall chef's hat, cleaver in hand;
+  throws a **volley** of three knives, each at a different plant.
+- **The Executioner** (Jail) — hooded, bare-chested, with a huge axe that
+  **sweeps** every plant in reach; three Ball-and-Chain Zombies guard him.
+- **Sergeant Rampage** (Armory) — armed to the teeth: his **arsenal** switches
+  from machine gun (rapid, light) to bazooka (rockets) to grenades (two at a
+  time) and round again. Code: `ZombieDef.arsenal`, event `gunSwitched`.
+- **Dr. Sawbones** (Hospital, the final wave) — a mad surgeon with a giant
+  syringe who **heals** every hurt zombie round him now and then.
+  Code: `ZombieDef.heal`, event `healed`.
+Knives, bullets, rockets and grenades are all a `Gun` (`ZombieDef.rockets`,
+with a `look` and a `volley`).
+
+**Prisoners** — The Jail's zombies: the **Convict Zombie** (orange jumpsuit,
+quick), the **Jailbird Zombie** (black-and-white stripes, tougher), some of
+both still in handcuffs (looks only), and the **Ball-and-Chain Zombie**
+(slow and tough, dragging an iron ball). **Wounded Soldier** — the
+Hospital's dead, back up in bloody uniforms and bandages.
+
+**Jailbreak** / **the dead rise** — The War Zone's final wave: prisoners
+come out of the jail's cells (each cell's door bursts off, the alarms spin),
+and the morgue's bodies sit up off their gurneys and get up (a zone's
+`rise`: they lie still a moment first). Looks apart from the spawns
+themselves.
+
 **Tombstone Zombie** — A Cyber Cemetery zombie that **rises** out of a
 tombstone instead of walking in: the rock is gone for good (the way through
 opens up), and it climbs out wearing a clump of grass with that same
@@ -219,7 +261,9 @@ plants attack twice as fast for a few seconds).
 
 **Ability look** — What an ability is called on a level, with its icon and
 sound; the rules don't change. On the Hellfire Arena the Orbital Laser
-Strike is the **Guitar Solo Blast** and Hyper Sun is the **Encore**. Code:
+Strike is the **Guitar Solo Blast** and Hyper Sun is the **Encore**; in the
+War Zone they're the **Air Strike** (a jet drops a stick of bombs) and the
+**Rally** (a bugle call). Code:
 `LevelDef.abilities`, `abilityLook`.
 
 ## Pathfinding (code)

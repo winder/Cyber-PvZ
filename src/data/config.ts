@@ -19,12 +19,18 @@ import type { ModelId } from '../models/models';
 export type PlantId = 'solarFlower' | 'laserPea' | 'forceNut' | 'cryoPea';
 export type ZombieId =
   | 'cyborg' | 'riotBot' | 'jetpack' | 'zomwes' | 'guardian' | 'tombstone' | 'captain' | 'gardener'
-  | 'satan' | 'biker' | 'roadie' | 'horseman';
+  | 'satan' | 'biker' | 'roadie' | 'horseman'
+  | 'convict' | 'jailbird' | 'chainGang' | 'woundedSoldier' | 'chef' | 'executioner' | 'gunner' | 'surgeon';
 export type StructureId = 'greenhouse' | 'powerPlant' | 'spaceship';
 export type AbilityId = 'orbitalStrike' | 'hyperSun';
 export type EdgeId = 'north' | 'south' | 'east' | 'west';
-/** Where a spawn group comes from: an edge, or up out of the tombstones (rocks) on the map. */
-export type SpawnFrom = EdgeId | 'graves';
+/** The War Zone's zones, each opening onto the corridor through its door. */
+export type ZoneId = 'barracks' | 'armory' | 'training' | 'jail' | 'hospital';
+/**
+ * Where a spawn group comes from: an edge, up out of the tombstones (rocks)
+ * on the map, or out of one of the map's zones.
+ */
+export type SpawnFrom = EdgeId | 'graves' | ZoneId;
 
 export interface PlantDef {
   name: string;
@@ -78,7 +84,8 @@ export interface ZombieDef {
   /** Extra decoration: a full head of curls, or a little nest round a rider. */
   hair?: 'curly' | 'nest';
   /** Something held in (or in place of) the right hand. */
-  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield' | 'sword';
+  weapon?: 'scythe' | 'rocketLauncher' | 'wateringCan' | 'guitar' | 'roadCase' | 'riotShield' | 'sword'
+    | 'cleaver' | 'axe' | 'syringe' | 'arsenal';
   /** Something it rides (drawn under it, wheels turning or hooves galloping). Looks only. */
   mount?: 'motorcycle' | 'zombieHorse';
   /**
@@ -90,9 +97,14 @@ export interface ZombieDef {
   cape?: string;
   /**
    * Worn on the head: a clump of grass with the tombstone it rose from stuck
-   * in it, a cracked glass greenhouse, or a pair of curling goat horns.
+   * in it, a cracked glass greenhouse, a pair of curling goat horns, a tall
+   * chef's hat, an army helmet, or a surgeon's head mirror.
    */
-  hat?: 'tombstone' | 'glassHelmet' | 'goatHorns';
+  hat?: 'tombstone' | 'glassHelmet' | 'goatHorns' | 'chefHat' | 'armyHelmet' | 'headMirror';
+  /** The share of them (0–1) wearing handcuffs, wrists together in front. Looks only. */
+  cuffs?: number;
+  /** A ball and chain locked to an ankle, dragged along behind. Looks only (the slowness is `speed`). */
+  shackle?: boolean;
   /**
    * A death animation only this zombie has, played instead of a common one
    * some of the time. Looks only.
@@ -113,7 +125,18 @@ export interface ZombieDef {
    * `range`, while it walks. Rockets fly at `speed` and blow up where they
    * land, hurting every plant within `radius` (and a base, if it's in reach).
    */
-  rockets?: { range: number; damage: number; radius: number; every: number; speed: number };
+  rockets?: Gun;
+  /**
+   * Switches between `guns` (in order, round and round) every `every`
+   * seconds, firing whichever it's holding like `rockets`.
+   */
+  arsenal?: { every: number; guns: Gun[] };
+  /**
+   * Patches up the zombies round about: every `every` seconds (the first
+   * after `first`) every other zombie within `radius` gets back `amount` of
+   * its full health. With nobody hurt in reach it tries again a second later.
+   */
+  heal?: { every: number; first: number; radius: number; amount: number };
   /**
    * Calls up `count` zombies around itself, then again after a random wait
    * between `min` and `max` seconds (the first call comes after `first`).
@@ -158,6 +181,19 @@ export interface ZombieDef {
    */
   wanderEvery?: number;
   wanderOn?: 'base' | 'self';
+}
+
+/**
+ * Something fired (see `ZombieDef.rockets`): every `every` seconds at the
+ * nearest plant (or base) within `range`, flying at `speed` and hurting
+ * everything within `radius` where it lands. With a `volley` it fires that
+ * many at once, each at a different plant (the nearest first). `look` is how
+ * it's drawn: rockets, thrown knives, bullets or lobbed grenades.
+ */
+export interface Gun {
+  range: number; damage: number; radius: number; every: number; speed: number;
+  volley?: number;
+  look?: 'rocket' | 'knife' | 'bullet' | 'grenade';
 }
 
 export interface StructureDef {
@@ -434,6 +470,155 @@ export const ZOMBIES: Record<ZombieId, ZombieDef> = {
     boss: true,
     raiseDead: { zombie: 'tombstone', reach: 5.5, max: 6, first: 5, every: 13, pause: 2.6 },
   },
+  // War Zone prisoners. An escaped convict in an orange jumpsuit: quick on
+  // his feet (some still in handcuffs).
+  convict: {
+    name: 'Convict Zombie',
+    icon: '🟠',
+    hp: 160,
+    speed: 1.35,
+    dps: 25,
+    armor: 0,
+    flying: false,
+    radius: 0.35,
+    color: '#ff7a1a',
+    model: 'humanoid',
+    skin: 'skins/convict.png',
+    cuffs: 0.5,
+  },
+  // An old-timer in black-and-white stripes: slower, but tougher.
+  jailbird: {
+    name: 'Jailbird Zombie',
+    icon: '🦓',
+    hp: 210,
+    speed: 1.1,
+    dps: 25,
+    armor: 0.15,
+    flying: false,
+    radius: 0.38,
+    color: '#d8d8d8',
+    model: 'humanoid',
+    skin: 'skins/jailbird.png',
+    cuffs: 0.5,
+  },
+  // Dragging an iron ball on a chain: very slow, very hard to stop.
+  chainGang: {
+    name: 'Ball-and-Chain Zombie',
+    icon: '⛓️',
+    hp: 380,
+    speed: 0.7,
+    dps: 30,
+    armor: 0.25,
+    flying: false,
+    radius: 0.45,
+    color: '#ff9a3d',
+    model: 'humanoid',
+    skin: 'skins/chainGang.png',
+    shackle: true,
+  },
+  // Back from the dead in the base hospital: still in uniform, bandaged and bloody.
+  woundedSoldier: {
+    name: 'Wounded Soldier',
+    icon: '🩹',
+    hp: 190,
+    speed: 1.0,
+    dps: 25,
+    armor: 0.1,
+    flying: false,
+    radius: 0.38,
+    color: '#7a8a4a',
+    model: 'humanoid',
+    skin: 'skins/woundedSoldier.png',
+    hat: 'armyHelmet',
+  },
+  // The War Zone's bosses, one to each zone. The mess hall's cook: huge gut,
+  // tall hat, a cleaver in hand, and a belt full of knives he throws three at
+  // a time.
+  chef: {
+    name: 'Chef Cleaver',
+    icon: '🔪',
+    hp: 2200,
+    speed: 0.7,
+    dps: 50,
+    armor: 0.15,
+    flying: false,
+    radius: 1.2,
+    color: '#f2efe6',
+    model: 'chef',
+    skin: 'skins/chef.png',
+    scale: 3,
+    weapon: 'cleaver',
+    hat: 'chefHat',
+    boss: true,
+    rockets: { range: 7, damage: 30, radius: 0.8, every: 3.5, speed: 13, volley: 3, look: 'knife' },
+  },
+  // The jail's executioner: a black hood, a bare chest and a huge axe that
+  // cleaves through everything round him. His chain gang shuffles along beside.
+  executioner: {
+    name: 'The Executioner',
+    icon: '🪓',
+    hp: 3300,
+    speed: 0.75,
+    dps: 70,
+    armor: 0.3,
+    flying: false,
+    radius: 1.1,
+    color: '#3a3a3a',
+    model: 'executioner',
+    skin: 'skins/executioner.png',
+    scale: 3,
+    weapon: 'axe',
+    boss: true,
+    sweep: 2.6,
+    guards: { zombie: 'chainGang', count: 3 },
+  },
+  // The armory's maniac, armed to the teeth: he switches from his machine
+  // gun to his bazooka to grenades and round again.
+  gunner: {
+    name: 'Sergeant Rampage',
+    icon: '💣',
+    hp: 3600,
+    speed: 0.7,
+    dps: 60,
+    armor: 0.3,
+    flying: false,
+    radius: 1.1,
+    color: '#8a9a4a',
+    model: 'gunner',
+    skin: 'skins/gunner.png',
+    scale: 3,
+    weapon: 'arsenal',
+    hat: 'armyHelmet',
+    boss: true,
+    arsenal: {
+      every: 6,
+      guns: [
+        { range: 7, damage: 8, radius: 0.5, every: 0.3, speed: 40, look: 'bullet' },
+        { range: 10, damage: 60, radius: 1.6, every: 3, speed: 11, look: 'rocket' },
+        { range: 8, damage: 35, radius: 1.4, every: 2, speed: 7, volley: 2, look: 'grenade' },
+      ],
+    },
+  },
+  // The hospital's mad surgeon: gown, mask and head mirror, splashed with
+  // blood, and a giant syringe that patches up every zombie round him.
+  surgeon: {
+    name: 'Dr. Sawbones',
+    icon: '💉',
+    hp: 4000,
+    speed: 0.75,
+    dps: 50,
+    armor: 0.15,
+    flying: false,
+    radius: 1.1,
+    color: '#7fd8c8',
+    model: 'surgeon',
+    skin: 'skins/surgeon.png',
+    scale: 3,
+    weapon: 'syringe',
+    hat: 'headMirror',
+    boss: true,
+    heal: { every: 5, first: 3, radius: 6, amount: 0.3 },
+  },
   // A final boss. Named after his creator.
   zomwes: {
     name: 'ZomWes 8000',
@@ -574,6 +759,35 @@ export interface Fan { x: number; z: number; radius: number; halfAngle: number }
 
 /** How deep a row of seats is, front to back (two rows of seats back to back). */
 export const SEAT_ROW_DEPTH = 1.8;
+/**
+ * Something solid standing on the ground (a rectangle): nothing gets through
+ * it, like a ravine, but it's drawn standing up instead of dug out. `look`
+ * says what it is: a brick wall topped with sandbags, a line of sandbags, a
+ * fence, or furniture and vehicles. `grounds` is fenced-off land the level's
+ * scenery fills in.
+ */
+export interface Barrier extends Rect {
+  look:
+    | 'brickWall' | 'sandbags' | 'fence' | 'grounds'
+    | 'bunk' | 'table' | 'counter' | 'tank' | 'jeep' | 'crates' | 'rack' | 'firingWall' | 'cabinet';
+}
+
+/**
+ * A zone (the War Zone's barracks, armory, ...): a walled-off area that opens
+ * onto the corridor through its `door`. Zombies from it appear at one of its
+ * `spots` (each in turn) and walk out; a boss appears at its `lair` instead.
+ * With `rise`, zombies take that many seconds to get up (the dead coming
+ * back to life). Nothing can be planted in a zone's `area`.
+ */
+export interface ZoneDef {
+  name: string;
+  area: Rect;
+  door: { x: number; z: number };
+  spots: { x: number; z: number }[];
+  lair: { x: number; z: number };
+  rise?: number;
+}
+
 /** A rock. `look` draws a landmark in its place (same rules: nothing gets through). */
 export interface Rock extends Circle { look?: 'gazebo' }
 
@@ -615,6 +829,10 @@ export interface MapDef {
    * fan's center, `height` up. Looks only: zombies walk up onto it.
    */
   stage?: { radius: number; height: number };
+  /** Walls, sandbags, fences and furniture standing on the ground (see `Barrier`). */
+  barriers?: Barrier[];
+  /** Zones zombies come out of (see `ZoneDef`). */
+  zones?: Partial<Record<ZoneId, ZoneDef>>;
 }
 
 /** Level 1: open ground, bases spread out. */
@@ -890,6 +1108,148 @@ const CONCERT_MAP: MapDef = {
   view: { x: -16, z: 0 },
 };
 
+/**
+ * Level 6: an army base. A long corridor runs east to west, walled with
+ * brick and sandbags, with the bases at the west end. The zones open onto
+ * it: the mess hall and the armory on the north side, the hospital and the
+ * jail on the south, and the training field at the far east end. Lines of
+ * sandbags (the trenches) stand across the corridor, so zombies weave along it.
+ */
+const WAR_HW = 56, WAR_HD = 32;
+/** The corridor's walls: their inner face, and how thick they are. */
+const WAR_WALL = 9.6, WAR_WALL_T = 1.2;
+/** Where the zones' doors open onto the corridor (x), and how wide they are. */
+const WAR_DOORS = { barracks: 0, armory: 29, hospital: -4, jail: 33 };
+const WAR_DOOR_W = 5;
+/** The zones' east and west fences, and the wall between the two zones on each side. */
+const WAR_ZONE_W = -14, WAR_ZONE_E = 42, WAR_ZONE_SPLIT = 14;
+
+/** A wall (or line of sandbags) from (x1, z1) to (x2, z2), straight along x or z. */
+function wallLine(x1: number, z1: number, x2: number, z2: number, look: Barrier['look'], t = WAR_WALL_T): Barrier {
+  return x1 === x2
+    ? { x: x1, z: (z1 + z2) / 2, w: t, d: Math.abs(z2 - z1), look }
+    : { x: (x1 + x2) / 2, z: z1, w: Math.abs(x2 - x1), d: t, look };
+}
+
+/** One side of the corridor (z > 0 north, < 0 south): a wall with a gap at each door. */
+function corridorWall(side: 1 | -1, doors: number[]): Barrier[] {
+  const z = side * (WAR_WALL + WAR_WALL_T / 2);
+  const out: Barrier[] = [];
+  let from = -WAR_HW;
+  for (const d of [...doors].sort((a, b) => a - b)) {
+    out.push(wallLine(from, z, d - WAR_DOOR_W / 2, z, 'brickWall'));
+    from = d + WAR_DOOR_W / 2;
+  }
+  out.push(wallLine(from, z, WAR_HW, z, 'brickWall'));
+  return out;
+}
+
+const WAR_IN = WAR_WALL + WAR_WALL_T; // where the zones begin, either side
+const WAR_BARRIERS: Barrier[] = [
+  ...corridorWall(1, [WAR_DOORS.barracks, WAR_DOORS.armory]),
+  ...corridorWall(-1, [WAR_DOORS.hospital, WAR_DOORS.jail]),
+  // The wall between the two zones on each side, and fences at their ends.
+  wallLine(WAR_ZONE_SPLIT, WAR_IN, WAR_ZONE_SPLIT, WAR_HD, 'brickWall'),
+  wallLine(WAR_ZONE_SPLIT, -WAR_IN, WAR_ZONE_SPLIT, -WAR_HD, 'brickWall'),
+  ...[1, -1].flatMap((side) => [
+    wallLine(WAR_ZONE_W, side * WAR_IN, WAR_ZONE_W, side * WAR_HD, 'fence', 0.6),
+    wallLine(WAR_ZONE_E, side * WAR_IN, WAR_ZONE_E, side * WAR_HD, 'fence', 0.6),
+  ]),
+  // Fenced-off grounds: headquarters behind the bases, the obstacle course out east.
+  ...[1, -1].flatMap((side): Barrier[] => [
+    { x: (-WAR_HW + WAR_ZONE_W - 0.3) / 2, z: side * (WAR_IN + WAR_HD) / 2, w: WAR_HW + WAR_ZONE_W - 0.3, d: WAR_HD - WAR_IN, look: 'grounds' },
+    { x: (WAR_HW + WAR_ZONE_E + 0.3) / 2, z: side * (WAR_IN + WAR_HD) / 2, w: WAR_HW - WAR_ZONE_E - 0.3, d: WAR_HD - WAR_IN, look: 'grounds' },
+  ]),
+  // The trenches: sandbag lines and a brick wall across the corridor.
+  wallLine(44, -WAR_WALL, 44, 2, 'sandbags', 1.4),
+  wallLine(38, -2, 38, WAR_WALL, 'sandbags', 1.4),
+  wallLine(22, -4, 22, 4, 'brickWall', 1.4),
+  wallLine(8, 3.4, 8, WAR_WALL, 'sandbags', 1.4),
+  wallLine(-10, -WAR_WALL, -10, -2, 'sandbags', 1.4),
+  // Mess hall: two rows of bunks in the west half, long tables in the east,
+  // the kitchen counter at the back.
+  ...[-11, -6].flatMap((x) => [14.5, 18.5, 22.5, 26.5].map((z): Barrier => ({ x, z, w: 3.4, d: 1.3, look: 'bunk' }))),
+  ...[15, 19, 23].map((z): Barrier => ({ x: 7, z, w: 8, d: 1.5, look: 'table' })),
+  { x: 7.5, z: 27.5, w: 9, d: 1.2, look: 'counter' },
+  // Armory: a tank and a jeep in the vehicle bay, crates, racks of guns along the back.
+  { x: 20.5, z: 23, w: 4.4, d: 6.4, look: 'tank' },
+  { x: 37, z: 22, w: 3, d: 5, look: 'jeep' },
+  { x: 25, z: 15, w: 3, d: 2, look: 'crates' },
+  { x: 35, z: 14.5, w: 2.2, d: 2.2, look: 'crates' },
+  { x: 28.5, z: 30.6, w: 22, d: 1, look: 'rack' },
+  // Hospital: medicine cabinets along the back wall.
+  { x: 5, z: -30.8, w: 14, d: 0.9, look: 'cabinet' },
+  // Jail: the execution range's firing wall, against the east fence.
+  { x: 40, z: -22, w: 1.2, d: 12, look: 'firingWall' },
+];
+
+/** The jail's cells, along its back wall, each 3.5 wide. */
+const WAR_CELLS = [16.5, 20, 23.5, 27, 30.5, 34];
+
+const WAR_ZONES: Partial<Record<ZoneId, ZoneDef>> = {
+  barracks: {
+    name: 'Mess Hall',
+    area: { x: 0, z: (WAR_IN + WAR_HD) / 2, w: WAR_ZONE_SPLIT - WAR_ZONE_W, d: WAR_HD - WAR_IN },
+    door: { x: WAR_DOORS.barracks, z: WAR_IN },
+    spots: [{ x: 0, z: 14 }, { x: -8.5, z: 16.5 }, { x: 0, z: 19 }, { x: -8.5, z: 20.5 }, { x: 0, z: 24 }, { x: -8.5, z: 24.5 }, { x: 4, z: 21 }, { x: 11, z: 25 }],
+    lair: { x: 7, z: 30 },
+  },
+  armory: {
+    name: 'Armory',
+    area: { x: (WAR_ZONE_SPLIT + WAR_ZONE_E) / 2, z: (WAR_IN + WAR_HD) / 2, w: WAR_ZONE_E - WAR_ZONE_SPLIT, d: WAR_HD - WAR_IN },
+    door: { x: WAR_DOORS.armory, z: WAR_IN },
+    spots: [{ x: 25, z: 18 }, { x: 33, z: 15 }, { x: 29, z: 20 }, { x: 17, z: 14 }, { x: 40, z: 16 }, { x: 25, z: 27 }, { x: 33, z: 27 }],
+    lair: { x: 29, z: 24.5 },
+  },
+  hospital: {
+    name: 'Hospital',
+    area: { x: 0, z: -(WAR_IN + WAR_HD) / 2, w: WAR_ZONE_SPLIT - WAR_ZONE_W, d: WAR_HD - WAR_IN },
+    door: { x: WAR_DOORS.hospital, z: -WAR_IN },
+    // The morgue: rows of bodies on gurneys.
+    spots: [-11, -7.5, -4].flatMap((x) => [-15.5, -19.5, -23.5, -27.5].map((z) => ({ x, z }))),
+    lair: { x: 7, z: -24 },
+    rise: 2,
+  },
+  jail: {
+    name: 'Jail',
+    area: { x: (WAR_ZONE_SPLIT + WAR_ZONE_E) / 2, z: -(WAR_IN + WAR_HD) / 2, w: WAR_ZONE_E - WAR_ZONE_SPLIT, d: WAR_HD - WAR_IN },
+    door: { x: WAR_DOORS.jail, z: -WAR_IN },
+    // One in each cell, and a second further back.
+    spots: [...WAR_CELLS.map((x) => ({ x, z: -28.5 })), ...WAR_CELLS.map((x) => ({ x, z: -30.5 }))],
+    // The execution range, in front of the firing wall.
+    lair: { x: 35, z: -20 },
+  },
+  training: {
+    name: 'Training Field',
+    area: { x: (49 + WAR_HW) / 2, z: 0, w: WAR_HW - 49, d: WAR_WALL * 2 },
+    door: { x: 49, z: 0 },
+    spots: [-6, -2, 2, 6].flatMap((z) => [{ x: 51, z }, { x: 54, z: z + 1 }]),
+    lair: { x: 52.5, z: 0 },
+  },
+};
+
+const WAR_MAP: MapDef = {
+  width: WAR_HW * 2,
+  depth: WAR_HD * 2,
+  hills: 0, // paved and levelled
+  structures: [
+    { id: 'greenhouse', x: -46, z: 0 },
+    { id: 'powerPlant', x: -35, z: 0 },
+    { id: 'spaceship', x: -24, z: 0 },
+  ],
+  rocks: [],
+  ravines: [],
+  barriers: WAR_BARRIERS,
+  zones: WAR_ZONES,
+  edges: {
+    east: { from: -6, to: 6 },
+    north: { from: -6, to: 6 },
+    south: { from: -6, to: 6 },
+    west: { from: -6, to: 6 },
+  },
+  view: { x: -14, z: 0 },
+};
+
 // ---------------------------------------------------------------------------
 //  THEMES: the look of a level. Colors are hex strings.
 // ---------------------------------------------------------------------------
@@ -918,13 +1278,13 @@ export interface ThemeDef {
    * the graveyard (neon fence, gazebo, ghosts, slime, haunted houses, moon),
    * or the jungle (giant trees with crashed ships hanging from vines, palms).
    */
-  decor?: 'ruinedCity' | 'graveyard' | 'jungle' | 'concert';
+  decor?: 'ruinedCity' | 'graveyard' | 'jungle' | 'concert' | 'warZone';
   /**
    * A painted ground instead of plain colors (asphalt street, sidewalks,
    * rubble, or an arena floor with a stage), or a patchy jungle floor (moss,
    * grass and bare earth).
    */
-  groundStyle?: 'cityStreet' | 'jungleFloor' | 'arenaFloor';
+  groundStyle?: 'cityStreet' | 'jungleFloor' | 'arenaFloor' | 'armyBase';
   /** Weather that rolls in partway through some waves. Looks only: the rules don't change. */
   weather?: WeatherDef;
 }
@@ -1040,6 +1400,26 @@ const CONCERT_THEME: ThemeDef = {
   groundStyle: 'arenaFloor',
 };
 
+/** An army base at dusk, under a smoky orange sky. */
+const WAR_THEME: ThemeDef = {
+  sky: '#6f6a5c',
+  fog: '#7d7462',
+  fogDensity: 0.009,
+  ground: '#6b6347',
+  ravine: '#1a160e',
+  light: '#ffe2bf',
+  lightIntensity: 0.85,
+  bounce: '#3e3a26',
+  sun: '#ffb877',
+  sunIntensity: 0.8,
+  rock: '#5d5a4e',
+  rockEdge: '#ffb21f',
+  border: '#c9a43a',
+  glow: 0.55,
+  decor: 'warZone',
+  groundStyle: 'armyBase',
+};
+
 // ---------------------------------------------------------------------------
 //  WAVES
 //  Each group spawns `count` zombies of `zombie` from `edge`, one every
@@ -1145,6 +1525,50 @@ const CONCERT_WAVES: SpawnGroup[][] = [
   ],
 ];
 
+/**
+ * The War Zone's waves: out of the zones. A boss comes out of a zone each
+ * wave from the second, each with his own trick. In the final wave the
+ * surgeon brings the morgue's dead back to life, and the prisoners break out
+ * of the jail.
+ */
+const WAR_WAVES: SpawnGroup[][] = [
+  [
+    { zombie: 'cyborg', edge: 'training', count: 6, every: 2.5, delay: 0 },
+    { zombie: 'cyborg', edge: 'barracks', count: 3, every: 3, delay: 8 },
+  ],
+  [
+    { zombie: 'cyborg', edge: 'barracks', count: 8, every: 2, delay: 0 },
+    { zombie: 'riotBot', edge: 'training', count: 3, every: 3, delay: 4 },
+    { zombie: 'chef', edge: 'barracks', count: 1, every: 1, delay: 14 },
+    { zombie: 'cyborg', edge: 'barracks', count: 5, every: 1.5, delay: 18 },
+  ],
+  [
+    { zombie: 'cyborg', edge: 'training', count: 8, every: 1.8, delay: 0 },
+    { zombie: 'riotBot', edge: 'armory', count: 4, every: 3, delay: 4 },
+    { zombie: 'jetpack', edge: 'armory', count: 3, every: 3, delay: 10 },
+    { zombie: 'executioner', edge: 'jail', count: 1, every: 1, delay: 16 },
+  ],
+  [
+    { zombie: 'riotBot', edge: 'training', count: 6, every: 2.5, delay: 0 },
+    { zombie: 'cyborg', edge: 'barracks', count: 8, every: 1.5, delay: 3 },
+    { zombie: 'jetpack', edge: 'armory', count: 5, every: 2, delay: 8 },
+    { zombie: 'gunner', edge: 'armory', count: 1, every: 1, delay: 14 },
+    { zombie: 'cyborg', edge: 'training', count: 6, every: 1.2, delay: 18 },
+  ],
+  // Final wave! The dead rise and the jail breaks open.
+  [
+    { zombie: 'cyborg', edge: 'training', count: 12, every: 1, delay: 0 },
+    { zombie: 'riotBot', edge: 'barracks', count: 6, every: 2, delay: 4 },
+    { zombie: 'jetpack', edge: 'armory', count: 6, every: 1.5, delay: 8 },
+    { zombie: 'surgeon', edge: 'hospital', count: 1, every: 1, delay: 14 },
+    { zombie: 'woundedSoldier', edge: 'hospital', count: 12, every: 0.6, delay: 16 },
+    { zombie: 'convict', edge: 'jail', count: 6, every: 0.5, delay: 22 },
+    { zombie: 'jailbird', edge: 'jail', count: 6, every: 0.5, delay: 23 },
+    { zombie: 'chainGang', edge: 'jail', count: 3, every: 1.5, delay: 26 },
+    { zombie: 'cyborg', edge: 'training', count: 10, every: 0.8, delay: 28 },
+  ],
+];
+
 // ---------------------------------------------------------------------------
 //  LEVELS
 // ---------------------------------------------------------------------------
@@ -1162,6 +1586,11 @@ export interface LevelDef {
   waves: SpawnGroup[][];
   /** This level's own bosses (one is picked each game) instead of BOSSES. */
   bosses?: ZombieId[];
+  /**
+   * Every boss in this level's waves turns up just as written (the War
+   * Zone's, one to a zone), instead of all standing in for one picked boss.
+   */
+  keepBosses?: boolean;
   /** Abilities under another name on this level (they work the same). */
   abilities?: Partial<Record<AbilityId, AbilityLook>>;
 }
@@ -1224,6 +1653,20 @@ export const LEVELS: LevelDef[] = [
       hyperSun: { name: 'Encore', icon: '🤘', description: 'The crowd screams for more: all plants attack twice as fast for a few seconds.', sound: 'encore' },
     },
   },
+  {
+    id: 'warzone',
+    name: 'War Zone',
+    icon: '🪖',
+    description: 'An army base gone bad. A boss in every zone, and the dead won’t stay down.',
+    map: WAR_MAP,
+    theme: WAR_THEME,
+    waves: WAR_WAVES,
+    keepBosses: true,
+    abilities: {
+      orbitalStrike: { name: 'Air Strike', icon: '✈️', description: 'Tap a spot to call in a bombing run.' },
+      hyperSun: { name: 'Rally', icon: '🎖️', description: 'Sound the bugle: all plants attack twice as fast for a few seconds.', sound: 'bugle' },
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1238,6 +1681,7 @@ export type SoundId =
   | 'structureHit' | 'structureDie' | 'orbital' | 'hyperSun' | 'waveStart'
   | 'waveClear' | 'win' | 'lose' | 'click' | 'error' | 'bossRoar' | 'stomp' | 'bossDie'
   | 'bossIntro' | 'crumble' | 'slowMo' | 'thunder' | 'wind' | 'rocket' | 'rocketBoom' | 'summon' | 'squawk' | 'goo' | 'cure'
-  | 'flame' | 'zap' | 'guitarSolo' | 'encore' | 'engine' | 'neigh' | 'raiseDead';
+  | 'flame' | 'zap' | 'guitarSolo' | 'encore' | 'engine' | 'neigh' | 'raiseDead'
+  | 'knife' | 'machineGun' | 'grenade' | 'heal' | 'jailbreak' | 'bodiesRise' | 'bugle' | 'gunSwitch';
 
 export const SOUND_FILES: Partial<Record<SoundId, string>> = {};

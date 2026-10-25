@@ -17,6 +17,7 @@ import { Steed } from './horseman';
 import { Parrot } from './parrot';
 import { rockExtras } from './rock';
 import { attachWeapon, buildGlassHelmet } from './weapons';
+import { armyExtras, type Arsenal } from './army';
 
 /**
  * A thing drawn in the world. `root` is moved/rotated by the renderer.
@@ -36,6 +37,8 @@ export interface Visual {
   pet?: Parrot;
   /** The Headless Horseman's horse, cape and floating pumpkin head. */
   steed?: Steed;
+  /** Sergeant Rampage's guns, one out at a time. */
+  arsenal?: Arsenal;
 }
 
 /** Shared neon materials, one per color+style. */
@@ -445,7 +448,12 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
     const glow = scene.getGlowLayerByName('glow');
     for (const m of helmet.getChildMeshes()) glow?.addExcludedMesh(m as Mesh);
   }
-  const extra = rockExtras(scene, character, def, name);
+  // Some prisoners still have their handcuffs on (which ones is down to the id).
+  const id = Number(name.replace(/\D/g, '')) || name.length;
+  const cuffed = !!def.cuffs && ((id * 0.618034) % 1) < def.cuffs;
+  const army = armyExtras(scene, character, def, name, cuffed);
+  const rock = rockExtras(scene, character, def, name);
+  const extra = army && rock ? (t: number, m: boolean) => { army(t, m); rock(t, m); } : army ?? rock;
   if (extra) {
     const before = update;
     update = (time, moving) => {
@@ -453,7 +461,8 @@ function skinnedZombie(scene: Scene, mats: Materials, type: ZombieId, name: stri
       extra(time, moving);
     };
   }
-  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet, steed };
+  const arsenal = (weapon?.metadata as { arsenal?: Arsenal } | null)?.arsenal;
+  return { root: character.root, height: def.hat === 'tombstone' ? 2.3 : 1.7, character, update, muzzle, pet, steed, arsenal };
 }
 
 export function createStructureVisual(scene: Scene, mats: Materials, type: StructureId, name: string): Visual {
