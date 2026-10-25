@@ -10,6 +10,7 @@ import {
 } from './blockModel';
 import { MODELS, skinUnits, type ModelId } from '../models/models';
 import { getCustomSkin } from '../skins';
+import { buildPowerPlant, buildSpaceship } from './bases';
 import { createBrain } from './brain';
 import { buildTombstoneHat, type StoneLook } from './graveyard';
 import { buildHair } from './hair';
@@ -37,6 +38,8 @@ export interface Visual {
   pet?: Parrot;
   /** The Headless Horseman's horse, cape and floating pumpkin head. */
   steed?: Steed;
+  /** Bases: stop the steam, sparks and engines when it's destroyed. */
+  wreck?(): void;
   /** Sergeant Rampage's guns, one out at a time. */
   arsenal?: Arsenal;
 }
@@ -288,44 +291,8 @@ const structureFactories: Record<StructureId, Factory> = {
     return { root, height: 3.4 };
   },
 
-  powerPlant(scene, mats, name) {
-    const root = new TransformNode(name, scene);
-    const base = MeshBuilder.CreateBox(`${name}-base`, { width: 3, height: 0.6, depth: 2.4 }, scene);
-    base.material = mats.dark('#667788');
-    part(base, root, 0, 0.3, 0);
-    for (const [x, z] of [[-0.8, -0.5], [0.8, 0.5]]) {
-      const tower = MeshBuilder.CreateCylinder(`${name}-tower`, { height: 2.6, diameterTop: 0.7, diameterBottom: 1.1, tessellation: 12 }, scene);
-      tower.material = mats.dark('#99aabb');
-      part(tower, root, x, 1.6, z);
-      const core = MeshBuilder.CreateTorus(`${name}-core`, { diameter: 0.75, thickness: 0.12, tessellation: 16 }, scene);
-      core.material = mats.neon(STRUCTURES.powerPlant.color, 1.4);
-      part(core, root, x, 2.9, z);
-    }
-    return { root, height: 3.4 };
-  },
-
-  spaceship(scene, mats, name) {
-    const root = new TransformNode(name, scene);
-    const hull = MeshBuilder.CreateCylinder(`${name}-hull`, { height: 3.6, diameterTop: 0, diameterBottom: 1.4, tessellation: 8 }, scene);
-    hull.rotation.x = Math.PI / 2;
-    hull.material = mats.dark('#ccccdd');
-    part(hull, root, 0, 1.2, 0.2);
-    const wings = MeshBuilder.CreateBox(`${name}-wings`, { width: 3.6, height: 0.12, depth: 1.2 }, scene);
-    wings.material = mats.neon(STRUCTURES.spaceship.color, 0.5);
-    part(wings, root, 0, 1, -0.6);
-    for (const x of [-0.5, 0.5]) {
-      const engine = MeshBuilder.CreateCylinder(`${name}-engine`, { height: 0.5, diameter: 0.45, tessellation: 10 }, scene);
-      engine.rotation.x = Math.PI / 2;
-      engine.material = mats.neon('#4de1ff', 1.5);
-      part(engine, root, x, 1.1, -1.7);
-    }
-    for (const x of [-1, 1]) {
-      const leg = MeshBuilder.CreateCylinder(`${name}-leg`, { height: 1, diameter: 0.12 }, scene);
-      leg.material = mats.dark('#888899');
-      part(leg, root, x, 0.5, -0.5);
-    }
-    return { root, height: 2.6 };
-  },
+  powerPlant: buildPowerPlant,
+  spaceship: buildSpaceship,
 };
 
 // ----------------------------------------------------------------------------

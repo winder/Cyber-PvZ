@@ -318,6 +318,7 @@ export class Renderer {
         t.bar.setEnabled(false);
         continue;
       }
+      t.visual.update?.(this.time, false);
       this.setBar(t.bar, s.hp / STRUCTURES[s.type].hp);
     }
 
@@ -1267,6 +1268,7 @@ export class Renderer {
     this.burst(s.x, s.z, STRUCTURES[s.type].color, h + 1.5);
     this.burst(s.x + 1, s.z - 0.5, '#ffaa33', h + 1);
     const root = t.visual.root;
+    t.visual.wreck?.();
     for (const m of root.getChildMeshes()) m.material = this.world.mats.dark('#333344');
     root.scaling.y = 0.4;
   }

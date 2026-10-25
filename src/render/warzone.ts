@@ -1,5 +1,5 @@
 import {
-  Color3, DynamicTexture, GlowLayer, Matrix, Mesh, MeshBuilder, ParticleSystem, Quaternion, Scene,
+  Color3, DynamicTexture, Engine, GlowLayer, Matrix, Mesh, MeshBuilder, ParticleSystem, Quaternion, Scene,
   StandardMaterial, TransformNode, Vector3, VertexBuffer, VertexData, Color4,
 } from '@babylonjs/core';
 import type { Barrier, MapDef, Rect, ZoneId } from '../data/config';
@@ -63,6 +63,33 @@ export function armyBaseTexture(scene: Scene, map: MapDef): DynamicTexture {
       g.globalAlpha = alpha;
       g.fillStyle = grad;
       g.fillRect(X(x) - r * sx, Z(z) - r * sx, r * 2 * sx, r * 2 * sx);
+      g.globalAlpha = 1;
+    };
+    /**
+     * A splotch of blood: a clump of overlapping dark lumps, each its own
+     * size and shade, with droplets flung round it. `r` is roughly how big.
+     */
+    const splotch = (x: number, z: number, r: number) => {
+      const shades = ['#2e0202', '#3a0303', '#4a0505', '#560606'];
+      const lumps = 3 + Math.floor(rand() * 5);
+      for (let i = 0; i < lumps; i++) {
+        const a = rand() * Math.PI * 2, d = rand() * r * 0.55;
+        const rx = r * (0.25 + rand() * 0.45), rz = rx * (0.5 + rand() * 0.8);
+        g.globalAlpha = 0.7 + rand() * 0.25;
+        g.fillStyle = shades[Math.floor(rand() * shades.length)];
+        g.beginPath();
+        g.ellipse(X(x + Math.cos(a) * d), Z(z + Math.sin(a) * d), rx * sx, rz * sz, rand() * Math.PI, 0, Math.PI * 2);
+        g.fill();
+      }
+      const drops = 4 + Math.floor(rand() * 9);
+      for (let i = 0; i < drops; i++) {
+        const a = rand() * Math.PI * 2, d = r * (0.7 + rand() * 0.9);
+        g.globalAlpha = 0.6 + rand() * 0.35;
+        g.fillStyle = shades[Math.floor(rand() * shades.length)];
+        g.beginPath();
+        g.arc(X(x + Math.cos(a) * d), Z(z + Math.sin(a) * d), (0.6 + rand() * 1.8) * (sx / 18), 0, Math.PI * 2);
+        g.fill();
+      }
       g.globalAlpha = 1;
     };
     const all: Rect = { x: 0, z: 0, w: map.width, d: map.depth };
@@ -166,17 +193,19 @@ export function armyBaseTexture(scene: Scene, map: MapDef): DynamicTexture {
       g.fillStyle = '#c4161c';
       g.fillRect(X(cross.x - 2.5), Z(cross.z + 0.8), 5 * sx, 1.6 * sz);
       g.fillRect(X(cross.x - 0.8), Z(cross.z + 2.5), 1.6 * sx, 5 * sz);
-      // Blood: pools under the gurneys and the operating tables, smeared trails to the door.
-      for (const s of zones.hospital.spots) blob(s.x + 0.3, s.z - 0.2, 0.9, '#6e0a0a', 0.5);
-      for (let i = 0; i < 6; i++) blob(zones.hospital.lair.x + (rand() - 0.5) * 6, zones.hospital.lair.z + (rand() - 0.5) * 6, 0.6 + rand(), '#7a0b0b', 0.6);
-      g.strokeStyle = 'rgba(110,10,10,0.45)';
-      g.lineWidth = 5;
-      for (let i = 0; i < 4; i++) {
-        const s = zones.hospital.spots[Math.floor(rand() * zones.hospital.spots.length)];
-        g.beginPath();
-        g.moveTo(X(s.x), Z(s.z));
-        g.bezierCurveTo(X(s.x + 2), Z(s.z + 2), X(zones.hospital.door.x - 1), Z(zones.hospital.door.z - 3), X(zones.hospital.door.x), Z(zones.hospital.door.z));
-        g.stroke();
+      // Blood: a splotch under most gurneys (each its own), more round the
+      // operating tables, and drips trailing off toward the door.
+      for (const sp of zones.hospital.spots) {
+        if (rand() < 0.75) splotch(sp.x + (rand() - 0.5) * 1.4, sp.z + (rand() - 0.5) * 0.6, 0.4 + rand() * 0.6);
+      }
+      for (let i = 0; i < 7; i++) splotch(zones.hospital.lair.x + (rand() - 0.5) * 7, zones.hospital.lair.z + 1 + (rand() - 0.5) * 5, 0.3 + rand() * 0.7);
+      for (let i = 0; i < 3; i++) {
+        const sp = zones.hospital.spots[Math.floor(rand() * zones.hospital.spots.length)];
+        const door = zones.hospital.door;
+        for (let k = 1; k < 9; k++) {
+          const t = k / 9;
+          splotch(sp.x + (door.x - sp.x) * t + (rand() - 0.5) * 0.8, sp.z + (door.z - sp.z) * t + (rand() - 0.5) * 0.8, 0.12 + rand() * 0.18);
+        }
       }
     }
     // Jail: grey slab; dark cell floors; the range's sand, bloody by the firing wall.
@@ -189,7 +218,7 @@ export function armyBaseTexture(scene: Scene, map: MapDef): DynamicTexture {
       const range: Rect = { x: 38.7, z: -21, w: 6.6, d: 18 };
       rect(range, '#a8915e');
       speckle(range, 2500, ['#957f50', '#b8a06c', '#8a7448'], [1, 4]);
-      for (let i = 0; i < 7; i++) blob(39 - rand() * 1.5, -27 + rand() * 11, 0.5 + rand() * 0.6, '#6e0a0a', 0.55);
+      for (let i = 0; i < 9; i++) splotch(39.2 - rand() * 1.8, -27 + rand() * 11, 0.3 + rand() * 0.5);
     }
     // Training field: churned mud and puddles.
     const field: Rect = { x: 49, z: 0, w: 14, d: map.depth };
@@ -349,6 +378,107 @@ function signTex(scene: Scene, name: string, text: string, bg: string, fg: strin
   });
 }
 
+/** Woodland camo, weathered, with panel lines and mud low down. */
+function camoTex(scene: Scene): DynamicTexture {
+  return canvasTexture(scene, 'camo', 256, 256, (g) => {
+    const rand = rng(303);
+    g.fillStyle = '#4f5a30';
+    g.fillRect(0, 0, 256, 256);
+    for (const [color, n, size] of [['#3a4524', 14, 40], ['#5e4c2c', 10, 34], ['#22261a', 8, 22]] as const) {
+      g.fillStyle = color;
+      for (let i = 0; i < n; i++) {
+        const x = rand() * 256, y = rand() * 256;
+        g.beginPath();
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2, r = size * (0.5 + rand() * 0.6);
+          g.lineTo(x + Math.cos(a) * r * 1.4, y + Math.sin(a) * r * 0.8);
+        }
+        g.fill();
+      }
+    }
+    // Panel lines and rivets.
+    g.strokeStyle = 'rgba(20,22,14,0.55)';
+    g.lineWidth = 1.5;
+    for (let k = 32; k < 256; k += 64) {
+      g.beginPath(); g.moveTo(k, 0); g.lineTo(k, 256); g.stroke();
+      g.beginPath(); g.moveTo(0, k + 16); g.lineTo(256, k + 16); g.stroke();
+    }
+    g.fillStyle = 'rgba(20,22,14,0.6)';
+    for (let x = 6; x < 256; x += 12) for (const y of [8, 248]) g.fillRect(x, y, 2, 2);
+    // Dust and scratches.
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = `rgba(${rand() < 0.5 ? '170,150,110' : '20,20,14'},${0.08 + rand() * 0.15})`;
+      g.fillRect(rand() * 256, rand() * 256, 1 + rand() * 3, 1);
+    }
+    const mud = g.createLinearGradient(0, 160, 0, 256);
+    mud.addColorStop(0, 'rgba(90,72,44,0)');
+    mud.addColorStop(1, 'rgba(90,72,44,0.7)');
+    g.fillStyle = mud;
+    g.fillRect(0, 160, 256, 96);
+  });
+}
+
+/** Tent canvas: olive drab, seams running down it, weathered darker at the hem. */
+function canvasTex(scene: Scene): DynamicTexture {
+  return canvasTexture(scene, 'tentCanvas', 128, 128, (g) => {
+    const rand = rng(88);
+    g.fillStyle = '#5f6a3e';
+    g.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 1200; i++) {
+      g.fillStyle = `rgba(${rand() < 0.5 ? '40,46,26' : '120,128,90'},${0.08 + rand() * 0.12})`;
+      g.fillRect(rand() * 128, rand() * 128, 2, 2);
+    }
+    g.fillStyle = 'rgba(30,34,18,0.6)';
+    for (let x = 0; x < 128; x += 32) g.fillRect(x, 0, 2, 128);
+    const hem = g.createLinearGradient(0, 80, 0, 128);
+    hem.addColorStop(0, 'rgba(60,48,30,0)');
+    hem.addColorStop(1, 'rgba(60,48,30,0.6)');
+    g.fillStyle = hem;
+    g.fillRect(0, 80, 128, 48);
+  });
+}
+
+/** Olive drab paint on a helicopter: panel lines, rivets, oil streaks. */
+function heliTex(scene: Scene): DynamicTexture {
+  return canvasTexture(scene, 'heliBody', 256, 256, (g) => {
+    const rand = rng(61);
+    g.fillStyle = '#4a5230';
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 1500; i++) {
+      g.fillStyle = `rgba(${rand() < 0.5 ? '30,34,20' : '110,118,80'},${0.06 + rand() * 0.1})`;
+      g.fillRect(rand() * 256, rand() * 256, 2, 2);
+    }
+    g.strokeStyle = 'rgba(20,22,12,0.6)';
+    g.lineWidth = 1.5;
+    for (let k = 20; k < 256; k += 48) {
+      g.beginPath(); g.moveTo(k, 0); g.lineTo(k, 256); g.stroke();
+      g.beginPath(); g.moveTo(0, k); g.lineTo(256, k); g.stroke();
+    }
+    g.fillStyle = 'rgba(20,22,12,0.7)';
+    for (let k = 20; k < 256; k += 48) for (let y = 4; y < 256; y += 8) g.fillRect(k + 3, y, 1.5, 1.5);
+    for (let i = 0; i < 10; i++) {
+      g.fillStyle = 'rgba(20,18,10,0.25)';
+      g.fillRect(rand() * 256, rand() * 128, 3 + rand() * 4, 40 + rand() * 80);
+    }
+  });
+}
+
+/** A tank track: steel links with raised cleats. */
+function treadTex(scene: Scene): DynamicTexture {
+  return canvasTexture(scene, 'tread', 64, 256, (g) => {
+    g.fillStyle = '#2a2a28';
+    g.fillRect(0, 0, 64, 256);
+    for (let y = 0; y < 256; y += 16) {
+      g.fillStyle = '#4a4a46';
+      g.fillRect(2, y + 2, 60, 9);
+      g.fillStyle = '#16161a';
+      g.fillRect(30, y, 4, 16);
+      g.fillStyle = 'rgba(120,90,60,0.35)';
+      g.fillRect(4, y + 10, 56, 3);
+    }
+  });
+}
+
 // ----------------------------------------------------------------------------
 //  Builders
 // ----------------------------------------------------------------------------
@@ -390,6 +520,41 @@ function paint(scene: Scene, name: string, color: string, glow = 0, spec = 0.05)
     m.diffuseColor = hex(color);
     m.emissiveColor = hex(color).scale(glow);
     m.specularColor = new Color3(spec, spec, spec);
+  });
+}
+
+/** Meshes collected by material, merged into one mesh each when the thing is built. */
+class Parts {
+  private byMat = new Map<StandardMaterial, Mesh[]>();
+  add(m: Mesh, mat: StandardMaterial): Mesh {
+    m.isPickable = false;
+    (this.byMat.get(mat) ?? this.byMat.set(mat, []).get(mat)!).push(m);
+    return m;
+  }
+
+  /** Merge (baking where each sits), optionally hanging the results off `parent`. */
+  merge(name: string, parent?: TransformNode): void {
+    for (const [mat, list] of this.byMat) {
+      for (const m of list) m.computeWorldMatrix(true);
+      const merged = merge(list, mat, name);
+      if (merged && parent) merged.parent = parent;
+    }
+    this.byMat.clear();
+  }
+}
+
+/** A see-through decal: whatever's drawn on a clear background. */
+function decal(scene: Scene, name: string, draw: (g: CanvasRenderingContext2D) => void, w = 128, h = 128): StandardMaterial {
+  return material(scene, `war-decal-${name}`, (m) => {
+    const tex = canvasTexture(scene, `decal-${name}`, w, h, (g) => {
+      g.clearRect(0, 0, w, h);
+      draw(g);
+    });
+    tex.hasAlpha = true;
+    m.diffuseTexture = tex;
+    m.useAlphaFromDiffuseTexture = true;
+    m.backFaceCulling = false;
+    m.specularColor = Color3.Black();
   });
 }
 
@@ -620,41 +785,151 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
     }
   }
 
+  /**
+   * A main battle tank, nose to the south (toward the door): tracks running
+   * round road wheels, an idler and a toothed sprocket, armored skirts, a
+   * sloped glacis, an angled turret with a long gun, a commander's cupola
+   * with a machine gun, smoke launchers, antennas and a stowage basket, all
+   * in woodland camo. Built at the origin, merged by material, then put in
+   * place; the turret turns.
+   */
   function buildTank(b: Barrier, y: number): void {
-    // A tank, nose to the south (toward the door): treads, hull, turret, a long gun.
     const root = new TransformNode('tank', scene);
     root.position.set(b.x, y, b.z);
-    const add = (m: Mesh, mat: StandardMaterial) => { m.parent = root; m.material = mat; return m; };
-    const camo = paint(scene, 'tankGreen', '#4d5a2e', 0.05, 0.15);
-    const tread = paint(scene, 'tread', '#262626', 0, 0.2);
-    for (const dx of [-1, 1]) {
-      add(box(scene, 'tread', 1.0, 1.0, b.d, dx * (b.w / 2 - 0.5), 0, 0), tread);
-      for (let k = 0; k < 6; k++) {
-        const wheel = add(MeshBuilder.CreateCylinder('roadWheel', { height: 1.04, diameter: 0.7, tessellation: 10 }, scene), tread);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(dx * (b.w / 2 - 0.5), 0.45, -b.d / 2 + 0.7 + k * (b.d - 1.4) / 5);
-      }
-    }
-    add(box(scene, 'hull', b.w - 1.8, 0.9, b.d - 0.4, 0, 0.35, 0), camo);
-    add(box(scene, 'deck', b.w, 0.25, b.d - 0.6, 0, 1.0, 0), camo);
     const turret = new TransformNode('turret', scene);
     turret.parent = root;
-    turret.position.set(0, 1.25, 0.3);
-    const t = add(box(scene, 'turretBody', 2.4, 0.8, 2.6, 0, 0, 0), camo);
-    t.parent = turret;
-    const gun = add(MeshBuilder.CreateCylinder('gun', { height: 3.6, diameter: 0.24, tessellation: 8 }, scene), tread);
-    gun.parent = turret;
-    gun.rotation.x = Math.PI / 2 - 0.08;
-    gun.position.set(0, 0.45, -2.9);
-    const hatch = add(cyl(scene, 'hatch', 0.2, 0.7, 0.5, 0.8, 0.5, 8), camo);
-    hatch.parent = turret;
-    // A white star on each side.
-    for (const dx of [-1, 1]) {
-      const star = MeshBuilder.CreateDisc('star', { radius: 0.35, tessellation: 5 }, scene);
-      star.parent = root;
+    turret.position.set(0, 1.42, 0.25);
+    const camo = material(scene, 'war-tankCamo', (m) => {
+      m.diffuseTexture = camoTex(scene);
+      m.specularColor = new Color3(0.12, 0.12, 0.1);
+    });
+    const tread = material(scene, 'war-tread', (m) => {
+      m.diffuseTexture = treadTex(scene);
+      m.specularColor = new Color3(0.2, 0.2, 0.2);
+    });
+    const rubber = paint(scene, 'rubber', '#1c1c1a', 0, 0.1);
+    const metal = paint(scene, 'gunMetal', '#2c2f2a', 0.02, 0.4);
+    const lens = paint(scene, 'lens', '#fff4c8', 0.6, 0.8);
+    const olivePaint = paint(scene, 'olive', '#55603a');
+    /** Meshes by material, for the hull and for the turret. */
+    const hull = new Map<StandardMaterial, Mesh[]>(), top = new Map<StandardMaterial, Mesh[]>();
+    const put = (into: Map<StandardMaterial, Mesh[]>, m: Mesh, mat: StandardMaterial) => {
+      m.isPickable = false;
+      (into.get(mat) ?? into.set(mat, []).get(mat)!).push(m);
+      return m;
+    };
+    const boxAt = (w: number, h: number, d: number, x: number, yy: number, z: number) => {
+      const m = MeshBuilder.CreateBox('tankPart', { width: w, height: h, depth: d }, scene);
+      m.position.set(x, yy, z);
+      return m;
+    };
+    const cylAt = (h: number, d: number, x: number, yy: number, z: number, tess = 12, top2?: number) => {
+      const m = MeshBuilder.CreateCylinder('tankPart', { height: h, diameterBottom: d, diameterTop: top2 ?? d, tessellation: tess }, scene);
+      m.position.set(x, yy, z);
+      return m;
+    };
+
+    // Tracks: a belt round each side's wheels (bottom run, top run, sloping ends).
+    const L = b.d / 2;
+    for (const side of [-1, 1]) {
+      const tx = side * (b.w / 2 - 0.45);
+      put(hull, boxAt(0.85, 0.12, L * 1.45, tx, 0.07, 0), tread);
+      put(hull, boxAt(0.85, 0.12, L * 1.78, tx, 1.0, 0.05), tread);
+      const front = put(hull, boxAt(0.85, 0.12, 1.05, tx, 0.42, -L * 0.82), tread);
+      front.rotation.x = -0.82;
+      const back = put(hull, boxAt(0.85, 0.12, 0.95, tx, 0.45, L * 0.83), tread);
+      back.rotation.x = 0.95;
+      // Road wheels: rubber tyres round olive hubs.
+      for (let k = 0; k < 6; k++) {
+        const wz = -L * 0.62 + k * (L * 1.24) / 5;
+        const tyre = put(hull, cylAt(0.75, 0.72, tx, 0.42, wz, 14), rubber);
+        tyre.rotation.z = Math.PI / 2;
+        const hub = put(hull, cylAt(0.8, 0.4, tx + side * 0.01, 0.42, wz, 10), camo);
+        hub.rotation.z = Math.PI / 2;
+      }
+      // The idler up front, the drive sprocket at the back (with teeth).
+      const idler = put(hull, cylAt(0.75, 0.6, tx, 0.72, -L * 0.93, 12), metal);
+      idler.rotation.z = Math.PI / 2;
+      const sprocket = put(hull, cylAt(0.78, 0.66, tx, 0.75, L * 0.92, 12), metal);
+      sprocket.rotation.z = Math.PI / 2;
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2;
+        put(hull, boxAt(0.8, 0.1, 0.1, tx, 0.75 + Math.sin(a) * 0.36, L * 0.92 + Math.cos(a) * 0.36), metal).rotation.x = a;
+      }
+      // Armored side skirts over the top of the track.
+      put(hull, boxAt(0.07, 0.5, L * 1.7, side * (b.w / 2 + 0.02), 0.78, -0.05), camo);
+      // Headlights and tow hooks at the front corners.
+      const light = put(hull, cylAt(0.16, 0.22, side * (b.w / 2 - 0.55), 1.3, -L * 0.86, 10), lens);
+      light.rotation.x = Math.PI / 2;
+      put(hull, boxAt(0.14, 0.18, 0.25, side * 0.8, 0.5, -L * 0.98), metal);
+    }
+    // The hull: a body between the tracks, fenders over them, the sloped front plate.
+    put(hull, boxAt(b.w - 1.8, 0.85, L * 1.7, 0, 0.55, 0), camo);
+    put(hull, boxAt(b.w, 0.32, L * 1.55, 0, 1.18, 0.35), camo);
+    const glacis = put(hull, boxAt(b.w - 0.1, 0.14, 1.5, 0, 0.96, -L * 0.74), camo);
+    glacis.rotation.x = 0.42;
+    // The engine deck at the back: grille slats and exhausts.
+    for (let k = 0; k < 6; k++) put(hull, boxAt(2.4, 0.05, 0.12, 0, 1.36, L * 0.45 + k * 0.22), metal);
+    for (const side of [-1, 1]) put(hull, boxAt(0.5, 0.3, 0.15, side * 1.2, 1.1, L * 0.96), metal);
+    // Fuel drums and a spare track link strapped on the back.
+    for (const side of [-1, 1]) {
+      const drum = put(hull, cylAt(1.0, 0.45, side * 1.25, 1.55, L * 0.88, 12), camo);
+      drum.rotation.z = Math.PI / 2;
+    }
+
+    // The turret: a wide angled box with pointed cheeks, a bustle at the back.
+    put(top, boxAt(2.5, 0.72, 2.6, 0, 0, 0), camo);
+    for (const side of [-1, 1]) {
+      const cheek = put(top, boxAt(1.45, 0.66, 1.2, side * 0.62, -0.02, -1.45), camo);
+      cheek.rotation.y = side * 0.5;
+    }
+    put(top, boxAt(2.1, 0.58, 1.1, 0, 0.02, 1.75), camo);
+    // Stowage basket on the bustle, with a rolled tarp and kit bags in it.
+    for (const [w, d, x, z] of [[2.3, 0.06, 0, 2.4], [0.06, 1.0, -1.15, 1.9], [0.06, 1.0, 1.15, 1.9]]) put(top, boxAt(w, 0.35, d, x, 0.45, z), metal);
+    const tarp = put(top, cylAt(2.0, 0.4, 0, 0.5, 2.15, 10), olivePaint);
+    tarp.rotation.z = Math.PI / 2;
+    // The mantlet, and the gun: a long barrel with a fume extractor and a muzzle brake.
+    put(top, boxAt(1.0, 0.62, 0.55, 0, 0.05, -2.0), camo);
+    const barrel = put(top, cylAt(4.3, 0.2, 0, 0.08, -4.3, 12, 0.18), metal);
+    barrel.rotation.x = Math.PI / 2;
+    const fume = put(top, cylAt(0.7, 0.34, 0, 0.08, -3.6, 12), metal);
+    fume.rotation.x = Math.PI / 2;
+    put(top, boxAt(0.42, 0.3, 0.45, 0, 0.08, -6.45), metal);
+    // The commander's cupola with its hatch thrown open and a machine gun.
+    put(top, cylAt(0.32, 0.85, 0.62, 0.5, 0.35, 14), camo);
+    const hatch = put(top, cylAt(0.08, 0.75, 0.62, 0.95, 0.8, 14), camo);
+    hatch.rotation.x = -1.2;
+    const mg = put(top, cylAt(1.1, 0.07, 0.62, 0.95, -0.25, 6), metal);
+    mg.rotation.x = Math.PI / 2;
+    put(top, boxAt(0.14, 0.2, 0.4, 0.62, 0.95, 0.25), metal);
+    put(top, cylAt(0.22, 0.6, -0.6, 0.42, 0.6, 12), camo); // the loader's hatch
+    // Smoke grenade launchers either side, angled up and forward.
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const tube = put(top, cylAt(0.32, 0.1, side * (1.2 + k * 0.05), 0.35, -0.9 + k * 0.17, 8), metal);
+        tube.rotation.x = -0.7;
+        tube.rotation.z = side * 0.4;
+      }
+    }
+    // Antennas at the back corners.
+    for (const side of [-1, 1]) put(top, cylAt(3.2, 0.03, side * 0.95, 1.9, 1.3, 4), metal);
+
+    const merged = (into: Map<StandardMaterial, Mesh[]>, parent: TransformNode, name: string) => {
+      for (const [mat, list] of into) {
+        const m = merge(list, mat, name);
+        if (m) m.parent = parent;
+      }
+    };
+    merged(hull, root, 'tankHull');
+    merged(top, turret, 'tankTurret');
+    // A white star on the turret's sides.
+    for (const side of [-1, 1]) {
+      const star = MeshBuilder.CreateDisc('star', { radius: 0.32, tessellation: 5 }, scene);
+      star.parent = turret;
       star.material = paint(scene, 'star', '#e8e2c8', 0.2);
-      star.position.set(dx * (b.w / 2 - 0.88), 0.85, 0.5);
-      star.rotation.y = -dx * Math.PI / 2;
+      star.position.set(side * 1.26, 0.02, 0.3);
+      star.rotation.y = -side * Math.PI / 2;
+      star.rotation.z = Math.PI / 2;
       star.isPickable = false;
     }
     // The turret creaks round, looking for trouble.
@@ -781,28 +1056,35 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
   //  The hospital: the morgue's bodies on gurneys, and the operating theatre
   // --------------------------------------------------------------------------
 
-  const sheetMat = material(scene, 'war-sheet', (m) => {
-    m.diffuseTexture = canvasTexture(scene, 'sheetTex', 128, 128, (g) => {
-      const r = rng(19);
+  /** Sheets soaked through in their own places (a few variants, so no two gurneys match). */
+  const sheetMats = Array.from({ length: 6 }, (_, v) => material(scene, `war-sheet${v}`, (m) => {
+    m.diffuseTexture = canvasTexture(scene, `sheetTex${v}`, 128, 128, (g) => {
+      const r = rng(19 + v * 7);
       g.fillStyle = '#e6e3da';
       g.fillRect(0, 0, 128, 128);
       for (let i = 0; i < 40; i++) {
         g.fillStyle = 'rgba(160,150,140,0.25)';
         g.fillRect(0, r() * 128, 128, 1);
       }
-      // Blood soaking through.
-      for (let i = 0; i < 5; i++) {
-        const x = 20 + r() * 88, y = 30 + r() * 70;
-        const grad = g.createRadialGradient(x, y, 0, x, y, 10 + r() * 16);
-        grad.addColorStop(0, 'rgba(130,8,8,0.95)');
-        grad.addColorStop(0.6, 'rgba(150,20,20,0.6)');
-        grad.addColorStop(1, 'rgba(150,20,20,0)');
-        g.fillStyle = grad;
-        g.fillRect(0, 0, 128, 128);
+      // Blood soaking through: dark clumps with a lighter wet rim.
+      const shades = ['#3a0303', '#4a0505', '#5c0707', '#2e0202'];
+      const stains = 1 + Math.floor(r() * 4);
+      for (let i = 0; i < stains; i++) {
+        const x = 10 + r() * 108, y = 10 + r() * 108, size = 6 + r() * 16;
+        for (let k = 0; k < 4 + r() * 5; k++) {
+          const a = r() * Math.PI * 2, d = r() * size * 0.6;
+          g.fillStyle = k === 0 ? 'rgba(140,30,30,0.5)' : shades[Math.floor(r() * shades.length)];
+          g.globalAlpha = k === 0 ? 1 : 0.75 + r() * 0.25;
+          g.beginPath();
+          g.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d, size * (0.3 + r() * 0.5) * (k === 0 ? 1.5 : 1), size * (0.25 + r() * 0.4), r() * Math.PI, 0, Math.PI * 2);
+          g.fill();
+        }
       }
+      g.globalAlpha = 1;
     });
     m.specularColor = new Color3(0.02, 0.02, 0.02);
-  });
+  }));
+  const sheetMat = sheetMats[0];
   const skinMat = paint(scene, 'deadSkin', '#8fae7a');
   /** The morgue's bodies, by spot: hidden as each one gets up. */
   const bodies: TransformNode[] = [];
@@ -821,8 +1103,11 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
       body.position.set(s.x, y + 0.83, s.z);
       body.rotation.y = (rand() - 0.5) * 0.1;
       const add = (m: Mesh, mat: StandardMaterial) => { m.parent = body; m.material = mat; m.isPickable = false; return m; };
-      add(MeshBuilder.CreateBox('torso', { width: 1.5, height: 0.3, depth: 0.6 }, scene), sheetMat).position.set(-0.1, 0.15, 0);
-      add(MeshBuilder.CreateSphere('headBump', { diameterX: 0.42, diameterY: 0.3, diameterZ: 0.42, segments: 8 }, scene), sheetMat).position.set(-0.85, 0.16, 0);
+      const sheet = sheetMats[Math.floor(rand() * sheetMats.length)];
+      const torso = add(MeshBuilder.CreateBox('torso', { width: 1.5, height: 0.3, depth: 0.6 }, scene), sheet);
+      torso.position.set(-0.1, 0.15, 0);
+      torso.rotation.y = rand() < 0.5 ? 0 : Math.PI; // the stains end up either way round
+      add(MeshBuilder.CreateSphere('headBump', { diameterX: 0.42, diameterY: 0.3, diameterZ: 0.42, segments: 8 }, scene), sheet).position.set(-0.85, 0.16, 0);
       for (const dz of [-0.12, 0.12]) add(MeshBuilder.CreateBox('foot', { width: 0.14, height: 0.24, depth: 0.12 }, scene), skinMat).position.set(0.72, 0.2, dz);
       const tag = add(MeshBuilder.CreateBox('toeTag', { width: 0.02, height: 0.14, depth: 0.1 }, scene), paint(scene, 'tag', '#e8d890', 0.2));
       tag.position.set(0.82, 0.16, 0.12);
@@ -995,7 +1280,7 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
     lamp.parent = pivot;
     lamp.material = paint(scene, 'lampBody', '#2a2a2a', 0, 0.4);
     lamp.isPickable = false;
-    const cone = MeshBuilder.CreateCylinder(`${name}Cone`, { height: 12, diameterTop: 0.4, diameterBottom: 4, tessellation: 16, cap: Mesh.NO_CAP }, scene);
+    const cone = MeshBuilder.CreateCylinder(`${name}Cone`, { height: 12, diameterTop: 4, diameterBottom: 0.4, tessellation: 16, cap: Mesh.NO_CAP }, scene);
     cone.parent = pivot;
     cone.rotation.x = Math.PI / 2;
     cone.position.z = 6;
@@ -1003,15 +1288,33 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
       m.emissiveColor = new Color3(1, 0.95, 0.75);
       m.diffuseColor = Color3.Black();
       m.disableLighting = true;
-      m.alpha = 0.09;
+      m.alpha = 0.16;
+      m.alphaMode = Engine.ALPHA_ADD;
       m.backFaceCulling = false;
       m.disableDepthWrite = true;
     });
     cone.isPickable = false;
     glow.addExcludedMesh(cone);
+    // The bright pool where the beam lands, sweeping across the ground.
+    const pool = MeshBuilder.CreateDisc(`${name}Pool`, { radius: 2.6, tessellation: 24 }, scene);
+    pool.rotation.x = Math.PI / 2;
+    pool.material = material(scene, 'war-searchPool', (m) => {
+      m.emissiveColor = new Color3(1, 0.95, 0.75);
+      m.diffuseColor = Color3.Black();
+      m.disableLighting = true;
+      m.opacityTexture = softDot(scene, 'searchPoolDot');
+      m.alpha = 0.7;
+      m.alphaMode = Engine.ALPHA_ADD;
+      m.disableDepthWrite = true;
+    });
+    pool.isPickable = false;
+    glow.addExcludedMesh(pool);
+    const reach = new Vector3(0, 0, 12);
     updates.push((_dt, t) => {
       pivot.rotation.y = phase + Math.sin(t * 0.4 + phase) * 1.4;
       pivot.rotation.x = 0.55 + Math.sin(t * 0.7 + phase) * 0.1;
+      const end = Vector3.TransformCoordinates(reach, pivot.computeWorldMatrix(true));
+      pool.position.set(end.x, ground(end.x, end.z) + 0.06, end.z);
     });
   }
 
@@ -1019,43 +1322,72 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
   //  Headquarters (behind the bases) and the training grounds (out east)
   // --------------------------------------------------------------------------
 
-  const tentMat = paint(scene, 'tent', '#5f6a3e', 0.04);
-  tentMat.backFaceCulling = false;
+  const tentMat = material(scene, 'war-tentCanvas', (m) => {
+    m.diffuseTexture = canvasTex(scene);
+    m.specularColor = new Color3(0.02, 0.02, 0.02);
+    m.backFaceCulling = false;
+  });
+  const ropeMat = paint(scene, 'rope', '#b8a77a');
+  /**
+   * A big army tent: canvas walls, a pitched roof overhanging them, a doorway
+   * with its flap rolled up over it (facing +z before `yaw`), guy ropes out
+   * to stakes along both sides.
+   */
   function tent(x: number, z: number, w: number, d: number, yaw: number): void {
     const y = ground(x, z);
-    // A ridge tent: two sheets of canvas leaning together, ends closed.
     const root = new TransformNode('tent', scene);
     root.position.set(x, y, z);
     root.rotation.y = yaw;
     root.computeWorldMatrix(true);
-    const canvas: Mesh[] = [];
-    const h = w * 0.55, slope = Math.hypot(w / 2, h), lean = Math.atan2(w / 2, h);
+    const parts = new Parts();
+    const at = (m: Mesh, px: number, py: number, pz: number, mat: StandardMaterial) => {
+      m.parent = root;
+      m.position.set(px, py, pz);
+      return parts.add(m, mat);
+    };
+    const wallH = 1.15, h = wallH + w * 0.32, over = 0.3;
+    // Side walls and the back wall; the front has a doorway in the middle.
+    for (const side of [-1, 1]) at(MeshBuilder.CreateBox('tentWall', { width: 0.05, height: wallH, depth: d }, scene), side * w / 2, wallH / 2, 0, tentMat);
+    at(MeshBuilder.CreateBox('tentBack', { width: w, height: wallH, depth: 0.05 }, scene), 0, wallH / 2, -d / 2, tentMat);
+    const door = w * 0.36;
+    for (const side of [-1, 1]) at(MeshBuilder.CreateBox('tentFront', { width: (w - door) / 2, height: wallH, depth: 0.05 }, scene), side * (door / 2 + (w - door) / 4), wallH / 2, d / 2, tentMat);
+    at(MeshBuilder.CreateBox('tentDoorway', { width: door, height: wallH * 0.95, depth: 0.02 }, scene), 0, wallH * 0.475, d / 2 - 0.15, paint(scene, 'tentDark', '#141810'));
+    const roll = at(MeshBuilder.CreateCylinder('tentRoll', { height: door + 0.2, diameter: 0.22, tessellation: 8 }, scene), 0, wallH - 0.05, d / 2 + 0.06, tentMat);
+    roll.rotation.z = Math.PI / 2;
+    // The roof: two slopes from the eaves to the ridge, overhanging all round.
+    const run = w / 2 + over, rise = (h - wallH) * (run / (w / 2));
     for (const side of [-1, 1]) {
-      const sheet = MeshBuilder.CreateBox('tentSide', { width: 0.06, height: slope, depth: d }, scene);
-      sheet.parent = root;
-      sheet.position.set(side * w / 4, h / 2, 0);
-      sheet.rotation.z = side * lean;
-      canvas.push(sheet);
+      const slope = at(MeshBuilder.CreateBox('tentRoof', { width: Math.hypot(run, rise), height: 0.05, depth: d + over * 2 }, scene), side * run / 2, h - rise / 2, 0, tentMat);
+      slope.rotation.z = -side * Math.atan2(rise, run);
     }
+    // Gables: triangles closing each end above the walls.
     for (const end of [-1, 1]) {
-      const gable = new Mesh('tentEnd', scene);
+      const gable = new Mesh('tentGable', scene);
       const data = new VertexData();
-      // Both faces, each with its own corners so each gets its own normal.
-      const tri = [-w / 2, 0, end * d / 2, w / 2, 0, end * d / 2, 0, h, end * d / 2];
+      const tri = [-w / 2, wallH, end * d / 2, w / 2, wallH, end * d / 2, 0, h, end * d / 2];
       data.positions = [...tri, ...tri];
       data.indices = [0, 1, 2, 5, 4, 3];
-      data.uvs = [0, 0, 1, 0, 0.5, 1, 0, 0, 1, 0, 0.5, 1];
+      data.uvs = [0, 0, 1, 0, 0.5, 0.5, 0, 0, 1, 0, 0.5, 0.5];
       data.normals = [];
       VertexData.ComputeNormals(data.positions, data.indices, data.normals);
       data.applyToMesh(gable);
       gable.parent = root;
-      canvas.push(gable);
+      parts.add(gable, tentMat);
     }
-    merge(canvas, tentMat, 'tent');
+    // Guy ropes from the eaves down to stakes.
+    const n = Math.max(2, Math.round(d / 1.6));
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < n; k++) {
+        const rz = -d / 2 + 0.3 + (k * (d - 0.6)) / (n - 1);
+        const x0 = side * (w / 2 + over * 0.8), y0 = wallH + 0.02, x1 = side * (w / 2 + 1.1);
+        const len = Math.hypot(x1 - x0, y0);
+        const rope = at(MeshBuilder.CreateCylinder('guyRope', { height: len, diameter: 0.025, tessellation: 3 }, scene), (x0 + x1) / 2, y0 / 2, rz, ropeMat);
+        rope.rotation.z = Math.atan2(x1 - x0, y0);
+        at(MeshBuilder.CreateBox('stake', { width: 0.06, height: 0.25, depth: 0.06 }, scene), x1, 0.1, rz, paint(scene, 'wood', '#6a4a2a'));
+      }
+    }
+    parts.merge('tent');
     root.dispose();
-    // A flap open at the front.
-    const flap = box(scene, 'flap', w * 0.35, w * 0.45, 0.04, x + Math.sin(yaw) * (d / 2 + 0.01), y, z + Math.cos(yaw) * (d / 2 + 0.01), yaw);
-    flap.material = paint(scene, 'tentDark', '#1e2214');
   }
 
   const HQ_N = 21.4;
@@ -1120,31 +1452,134 @@ export function createWarZone(scene: Scene, map: MapDef, terrain: Terrain, glow:
   tower(-15.5, 30.5, 'hqTowerN', 2);
   tower(-15.5, -30.5, 'hqTowerS', 4);
 
+  /**
+   * A utility helicopter on the pad, nose to -z before it's turned: a fat
+   * cabin with the doors slid open, a glassed-in cockpit, the engine cowling
+   * on top, a long tapering tail boom with its fin, stabilizer and tail
+   * rotor, landing skids, and the main rotor idling round.
+   */
   function helicopter(x: number, z: number): void {
     const y = ground(x, z);
     const root = new TransformNode('helicopter', scene);
     root.position.set(x, y, z);
     root.rotation.y = 0.6;
-    const green = paint(scene, 'heliGreen', '#4a5530', 0.04, 0.2);
-    const add = (m: Mesh, mat: StandardMaterial) => { m.parent = root; m.material = mat; m.isPickable = false; return m; };
-    add(MeshBuilder.CreateSphere('heliBody', { diameterX: 2, diameterY: 1.8, diameterZ: 3.6, segments: 10 }, scene), green).position.set(0, 1.4, 0);
-    add(MeshBuilder.CreateSphere('heliGlass', { diameterX: 1.6, diameterY: 1.2, diameterZ: 1.4, segments: 10 }, scene), paint(scene, 'glass', '#6a8a9a', 0.15, 0.8)).position.set(0, 1.6, -1.3);
-    const tail = add(MeshBuilder.CreateCylinder('heliTail', { height: 4, diameterTop: 0.25, diameterBottom: 0.6, tessellation: 8 }, scene), green);
-    tail.rotation.x = Math.PI / 2;
-    tail.position.set(0, 1.7, 3.4);
-    add(box(scene, 'heliFin', 0.1, 1, 0.7, 0, 1.6, 5.2), green);
-    for (const dx of [-0.8, 0.8]) add(box(scene, 'skid', 0.1, 0.1, 3, dx, 0, 0), paint(scene, 'darkSteel', '#3a3d42', 0.02, 0.3));
-    add(cyl(scene, 'rotorHub', 0.4, 0.2, 0, 2.2, 0, 6), paint(scene, 'darkSteel', '#3a3d42', 0.02, 0.3));
+    root.computeWorldMatrix(true);
+    const body = material(scene, 'war-heliBody', (m) => {
+      m.diffuseTexture = heliTex(scene);
+      m.specularColor = new Color3(0.15, 0.15, 0.12);
+    });
+    const glass = material(scene, 'war-heliGlass', (m) => {
+      m.diffuseColor = new Color3(0.12, 0.18, 0.22);
+      m.emissiveColor = new Color3(0.05, 0.12, 0.16);
+      m.specularColor = new Color3(0.9, 0.9, 0.9);
+      m.specularPower = 64;
+    });
+    const metal = paint(scene, 'gunMetal', '#2c2f2a', 0.02, 0.4);
+    const dark = paint(scene, 'tentDark', '#141810');
+    const parts = new Parts();
+    const at = (m: Mesh, px: number, py: number, pz: number, mat: StandardMaterial, parent: TransformNode = root) => {
+      m.parent = parent;
+      m.position.set(px, py, pz);
+      return parts.add(m, mat);
+    };
+    // The cabin, and the nose under the cockpit.
+    const cabin = at(MeshBuilder.CreateCapsule('heliCabin', { radius: 0.95, height: 4.4, tessellation: 14 }, scene), 0, 1.55, 0, body);
+    cabin.rotation.x = Math.PI / 2;
+    cabin.scaling.set(0.95, 1, 1.08);
+    at(MeshBuilder.CreateSphere('heliNose', { diameterX: 1.7, diameterY: 1.3, diameterZ: 1.8, segments: 12 }, scene), 0, 1.3, -1.95, body);
+    // The cockpit: a glazed bubble over the top of the nose, a frame down its middle.
+    at(MeshBuilder.CreateSphere('canopy', { diameterX: 1.62, diameterY: 1.25, diameterZ: 1.75, segments: 14, slice: 0.62 }, scene), 0, 1.45, -1.85, glass);
+    at(MeshBuilder.CreateBox('canopyFrame', { width: 0.07, height: 0.06, depth: 1.5 }, scene), 0, 2.08, -1.75, metal).rotation.x = 0.35;
+    for (const side of [-1, 1]) {
+      const sideWin = at(MeshBuilder.CreateBox('sideWindow', { width: 0.04, height: 0.55, depth: 0.8 }, scene), side * 0.9, 1.85, -1.05, glass);
+      sideWin.rotation.z = side * 0.18;
+      // The cabin door slid back, the dark inside showing; a window in the back.
+      at(MeshBuilder.CreateBox('cabinDoorway', { width: 0.04, height: 1.1, depth: 1.3 }, scene), side * 0.97, 1.45, -0.1, dark);
+      at(MeshBuilder.CreateBox('slidDoor', { width: 0.06, height: 1.15, depth: 1.3 }, scene), side * 1.0, 1.45, 1.0, body);
+      at(MeshBuilder.CreateBox('rearWindow', { width: 0.04, height: 0.4, depth: 0.5 }, scene), side * 1.03, 1.75, 1.0, glass);
+      // Skids: a long tube, its front turned up, on two struts.
+      const skid = at(MeshBuilder.CreateCylinder('skid', { height: 3.6, diameter: 0.1, tessellation: 6 }, scene), side * 1.0, 0.08, 0, metal);
+      skid.rotation.x = Math.PI / 2;
+      const tip = at(MeshBuilder.CreateCylinder('skidTip', { height: 0.5, diameter: 0.1, tessellation: 6 }, scene), side * 1.0, 0.2, -1.95, metal);
+      tip.rotation.x = Math.PI / 2 + 0.7;
+      for (const sz of [-0.9, 1.0]) {
+        const strut = at(MeshBuilder.CreateCylinder('strut', { height: 0.95, diameter: 0.08, tessellation: 6 }, scene), side * 0.85, 0.5, sz, metal);
+        strut.rotation.z = side * 0.35;
+      }
+      // Engine exhausts out the back of the cowling.
+      const exhaust = at(MeshBuilder.CreateCylinder('exhaust', { height: 0.5, diameter: 0.3, tessellation: 10 }, scene), side * 0.45, 2.55, 1.6, metal);
+      exhaust.rotation.x = Math.PI / 2 - 0.4;
+    }
+    // The engine cowling on top, intakes at the front of it, and the rotor mast.
+    at(MeshBuilder.CreateBox('cowling', { width: 1.3, height: 0.55, depth: 2.4 }, scene), 0, 2.55, 0.4, body);
+    for (const side of [-1, 1]) {
+      const intake = at(MeshBuilder.CreateCylinder('intake', { height: 0.3, diameter: 0.38, tessellation: 10 }, scene), side * 0.4, 2.6, -0.85, dark);
+      intake.rotation.x = Math.PI / 2;
+    }
+    at(MeshBuilder.CreateCylinder('mast', { height: 0.55, diameter: 0.22, tessellation: 8 }, scene), 0, 3.05, 0.1, metal);
+    // The tail boom, tapering back and a little up, with its fin and stabilizer.
+    const boom = at(MeshBuilder.CreateCylinder('tailBoom', { height: 4.6, diameterBottom: 0.85, diameterTop: 0.32, tessellation: 12 }, scene), 0, 1.95, 4.0, body);
+    boom.rotation.x = Math.PI / 2 - 0.07;
+    const fin = at(MeshBuilder.CreateBox('tailFin', { width: 0.08, height: 1.6, depth: 0.85 }, scene), 0, 2.8, 6.15, body);
+    fin.rotation.x = -0.4;
+    at(MeshBuilder.CreateBox('stabilizer', { width: 1.9, height: 0.06, depth: 0.5 }, scene), 0, 2.1, 5.9, body);
+    // ARMY down the boom, a star on the cabin.
+    for (const side of [-1, 1]) {
+      const word = MeshBuilder.CreatePlane('heliArmy', { width: 1.6, height: 0.4 }, scene);
+      word.parent = root;
+      word.position.set(side * 0.3, 2.0, 4.1);
+      word.rotation.set(0, -side * Math.PI / 2 + Math.PI, 0);
+      word.material = decal(scene, 'army', (g) => {
+        g.fillStyle = '#1a1a14';
+        g.font = 'bold 56px Impact, "Arial Black", sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText('ARMY', 128, 34);
+      }, 256, 64);
+      word.isPickable = false;
+      const star = MeshBuilder.CreateDisc('heliStar', { radius: 0.32, tessellation: 5 }, scene);
+      star.parent = root;
+      star.position.set(side * 1.06, 1.55, 1.95);
+      star.rotation.set(0, -side * Math.PI / 2, Math.PI / 2);
+      star.material = paint(scene, 'starDark', '#1a1a14');
+      star.isPickable = false;
+    }
+    parts.merge('helicopter');
+    // The main rotor: a hub and four long blades, drooping a little, idling round.
     const rotor = new TransformNode('rotor', scene);
     rotor.parent = root;
-    rotor.position.y = 2.65;
-    for (const a of [0, Math.PI / 2]) {
-      const blade = add(box(scene, 'blade', 7, 0.04, 0.3, 0, 0, 0), paint(scene, 'darkSteel', '#3a3d42', 0.02, 0.3));
-      blade.parent = rotor;
-      blade.rotation.y = a;
+    rotor.position.set(0, 3.35, 0.1);
+    const hub = MeshBuilder.CreateCylinder('rotorHub', { height: 0.25, diameter: 0.5, tessellation: 10 }, scene);
+    hub.parent = rotor;
+    hub.material = metal;
+    hub.isPickable = false;
+    for (let k = 0; k < 4; k++) {
+      const arm = new TransformNode('bladeArm', scene);
+      arm.parent = rotor;
+      arm.rotation.y = (k / 4) * Math.PI * 2;
+      const blade = MeshBuilder.CreateBox('blade', { width: 3.9, height: 0.05, depth: 0.32 }, scene);
+      blade.parent = arm;
+      blade.position.x = 2.1;
+      blade.rotation.z = -0.04;
+      blade.material = metal;
+      blade.isPickable = false;
     }
-    // Idling: the rotor turning slowly.
-    updates.push((dt) => { rotor.rotation.y += dt * 1.2; });
+    // The tail rotor, on the fin's side.
+    const tailRotor = new TransformNode('tailRotor', scene);
+    tailRotor.parent = root;
+    tailRotor.position.set(0.15, 3.1, 6.35);
+    for (const a of [0, Math.PI / 2]) {
+      const blade = MeshBuilder.CreateBox('tailBlade', { width: 0.04, height: 1.3, depth: 0.14 }, scene);
+      blade.parent = tailRotor;
+      blade.rotation.x = a;
+      blade.material = metal;
+      blade.isPickable = false;
+    }
+    // Idling: the rotor turning steadily, the tail rotor a blur.
+    updates.push((dt) => {
+      rotor.rotation.y += dt * 3;
+      tailRotor.rotation.x += dt * 14;
+    });
   }
 
   function waterTower(x: number, z: number): void {
